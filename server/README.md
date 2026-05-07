@@ -16,8 +16,9 @@ This scaffold provides the minimum execution surface to unblock RAT-8:
 
 ## Next wiring steps
 
-1. PostgreSQL migration runner (for `server/migrations/001_reviews_core.sql`) is still pending.
+1. PostgreSQL migration runner is available:
+`node server/src/db/runPostgresMigrations.js "$DATABASE_URL" rat8_dev`
 2. SQLite migration runner is available now:
 `node server/src/db/runSqliteMigrations.js server/.data/reviews-dev.sqlite`
 3. DB-backed repository/outbox integration is available through `SqliteReviewRepository` + `ReviewService({ repository })`.
-4. Promote current SQLite integration tests to CI and add PostgreSQL parity tests.
+4. Promote SQLite + PostgreSQL integration tests to CI with a seeded `DATABASE_URL`.

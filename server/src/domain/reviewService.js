@@ -305,6 +305,7 @@ function pairKey(serviceRequestId, reviewerUserId) {
 }
 
 function randomId(prefix) {
+  if (prefix === "rev" || prefix === "evt") return crypto.randomUUID();
   return `${prefix}_${crypto.randomUUID()}`;
 }
 
