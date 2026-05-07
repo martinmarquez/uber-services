@@ -1,6 +1,6 @@
-const { validateEligibilityReason } = require("../domain/reviewRules");
+import { validateEligibilityReason } from "../domain/reviewRules.js";
 
-function validateCreateReviewPayload(payload) {
+export function validateCreateReviewPayload(payload) {
   if (!payload || typeof payload !== "object") return "invalid_payload";
   if (!payload.serviceRequestId) return "service_request_id_required";
   if (!payload.providerUserId) return "provider_user_id_required";
@@ -9,7 +9,7 @@ function validateCreateReviewPayload(payload) {
   return null;
 }
 
-function validatePatchReviewPayload(payload) {
+export function validatePatchReviewPayload(payload) {
   if (!payload || typeof payload !== "object") return "invalid_payload";
   if (payload.rating !== undefined) {
     if (!Number.isInteger(payload.rating) || payload.rating < 1 || payload.rating > 5) {
@@ -20,7 +20,7 @@ function validatePatchReviewPayload(payload) {
   return null;
 }
 
-function businessError(code, message, details = {}) {
+export function businessError(code, message, details = {}) {
   return {
     error: {
       code,
@@ -30,17 +30,10 @@ function businessError(code, message, details = {}) {
   };
 }
 
-function eligibilityError(eligibilityReason, correlationId) {
+export function eligibilityError(eligibilityReason, correlationId) {
   const reason = validateEligibilityReason(eligibilityReason) ? eligibilityReason : "other_policy_violation";
   return businessError("ELIGIBILITY_FAILED", "Review is not eligible for creation", {
     eligibilityReason: reason,
     correlationId,
   });
 }
-
-module.exports = {
-  validateCreateReviewPayload,
-  validatePatchReviewPayload,
-  businessError,
-  eligibilityError,
-};

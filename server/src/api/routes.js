@@ -1,10 +1,10 @@
-const {
+import {
   validateCreateReviewPayload,
   validatePatchReviewPayload,
   businessError,
-} = require("./reviewsContract");
+} from "./reviewsContract.js";
 
-const routes = [
+export const routes = [
   {
     method: "POST",
     path: "/api/v1/service-requests/:serviceRequestId/reviews",
@@ -27,10 +27,8 @@ const routes = [
   },
 ];
 
-function validateRouteRequest(route, body) {
+export function validateRouteRequest(route, body) {
   const code = route.validateBody(body);
   if (!code) return null;
   return businessError("VALIDATION_ERROR", "Request payload is invalid", { code });
 }
-
-module.exports = { routes, validateRouteRequest };

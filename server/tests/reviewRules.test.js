@@ -1,11 +1,11 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const {
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
   isEligibleForReview,
   isTransitionAllowed,
   validateModerationDecision,
-} = require("../src/domain/reviewRules");
-const { eligibilityError } = require("../src/api/reviewsContract");
+} from "../src/domain/reviewRules.js";
+import { eligibilityError } from "../src/api/reviewsContract.js";
 
 test("eligible review within 14-day window", () => {
   const result = isEligibleForReview({

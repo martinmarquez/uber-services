@@ -1,4 +1,4 @@
-const REVIEW_STATUS = {
+export const REVIEW_STATUS = {
   VERIFICADA: "verificada",
   EN_REVISION: "en_revision",
   NO_RECOMENDADA: "no_recomendada",
@@ -23,7 +23,7 @@ const ALLOWED_TRANSITIONS = new Set([
   "removida->en_revision",
 ]);
 
-function isEligibleForReview(ctx) {
+export function isEligibleForReview(ctx) {
   if (!ctx?.serviceCompletedAt) return fail("service_not_completed");
   if (!ctx?.reviewerMatchesParticipant) return fail("identity_mismatch");
   if (ctx?.alreadyReviewed) return fail("duplicate_review");
@@ -38,11 +38,11 @@ function isEligibleForReview(ctx) {
   return { eligible: true, reason: null };
 }
 
-function isTransitionAllowed(fromStatus, toStatus) {
+export function isTransitionAllowed(fromStatus, toStatus) {
   return ALLOWED_TRANSITIONS.has(`${fromStatus}->${toStatus}`);
 }
 
-function validateModerationDecision(decision) {
+export function validateModerationDecision(decision) {
   if (!decision?.reasonCode) return "reason_code_required";
   if (!decision?.decisionNote) return "decision_note_required";
   if (!decision?.moderatorId) return "moderator_id_required";
@@ -50,18 +50,10 @@ function validateModerationDecision(decision) {
   return null;
 }
 
-function validateEligibilityReason(reason) {
+export function validateEligibilityReason(reason) {
   return ELIGIBILITY_REASONS.has(reason);
 }
 
 function fail(reason) {
   return { eligible: false, reason };
 }
-
-module.exports = {
-  REVIEW_STATUS,
-  isEligibleForReview,
-  isTransitionAllowed,
-  validateModerationDecision,
-  validateEligibilityReason,
-};
