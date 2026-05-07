@@ -4,19 +4,27 @@ import {
   isTransitionAllowed,
   validateModerationDecision,
 } from "./reviewRules.js";
+import { defaultEventSigner } from "../security/eventIntegrity.js";
 
 export class ReviewService {
-  constructor() {
+  constructor(options = {}) {
     this.reviews = new Map();
     this.reviewByPair = new Map();
     this.events = [];
     this.idempotencyIndex = new Map();
     this.velocityWindowByUser = new Map();
+    this.lastEventHash = null;
+    this.idempotencyTtlMs = options.idempotencyTtlMs ?? 24 * 60 * 60 * 1000;
+    this.velocityWindowMs = options.velocityWindowMs ?? 60 * 1000;
+    this.velocityMaxPerWindow = options.velocityMaxPerWindow ?? 5;
+    this.eventSigner = options.eventSigner ?? defaultEventSigner();
   }
 
   createReview(input) {
+    if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
+
     const correlationId = input.correlationId || randomId("corr");
-    const replay = this.idempotencyIndex.get(input.idempotencyKey);
+    const replay = this.getIdempotent(input.idempotencyKey);
     if (replay) return { replay: true, ...replay };
 
     const rateLimited = this.hitVelocityWindow(input.reviewerUserId, input.now);
@@ -63,7 +71,8 @@ export class ReviewService {
       rating: input.rating,
       comment: input.comment ?? null,
       status: "verificada",
-      riskScore: Number(input.riskScore ?? 0),
+      // Risk score must come from trusted server-side pipeline, never directly from client payload.
+      riskScore: 0,
       createdAt: input.now ?? new Date().toISOString(),
       updatedAt: input.now ?? new Date().toISOString(),
     };
@@ -88,6 +97,9 @@ export class ReviewService {
   }
 
   transitionModeration(input) {
+    if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
+    if (!canModerate(input?.actor)) return { ok: false, code: "forbidden_actor" };
+
     const review = this.reviews.get(input.reviewId);
     if (!review) return { ok: false, code: "not_found" };
     if (!isTransitionAllowed(review.status, input.toStatus)) return { ok: false, code: "forbidden_transition" };
@@ -102,9 +114,9 @@ export class ReviewService {
       reviewId: review.id,
       eventName: "review_moderation_decided.v1",
       correlationId: input.correlationId || randomId("corr"),
-      idempotencyKey: input.idempotencyKey || randomId("idem"),
+      idempotencyKey: input.idempotencyKey,
       actorType: "moderator",
-      actorId: input.decision.moderatorId,
+      actorId: input.actor.id,
       payload: {
         reasonCode: input.decision.reasonCode,
         severity: input.decision.severity,
@@ -116,24 +128,100 @@ export class ReviewService {
     return { ok: true, review };
   }
 
+  editReview(input) {
+    const review = this.reviews.get(input.reviewId);
+    if (!review) return { ok: false, code: "not_found" };
+    if (review.reviewerUserId !== input.actor?.id) return { ok: false, code: "not_owner" };
+
+    const now = new Date(input.now ?? Date.now());
+    const createdAt = new Date(review.createdAt);
+    const ageMs = now.getTime() - createdAt.getTime();
+    const editWindowMs = 15 * 60 * 1000;
+    if (Number.isNaN(ageMs) || ageMs > editWindowMs) return { ok: false, code: "edit_window_expired" };
+
+    if (input.rating !== undefined) review.rating = input.rating;
+    if (input.comment !== undefined) review.comment = input.comment;
+    review.updatedAt = now.toISOString();
+
+    this.emitEvent({
+      reviewId: review.id,
+      eventName: "review_created.v1",
+      correlationId: input.correlationId || randomId("corr"),
+      idempotencyKey: input.idempotencyKey || randomId("idem"),
+      actorType: "user",
+      actorId: input.actor.id,
+      payload: {
+        action: "edit",
+        rating: review.rating,
+        comment: review.comment,
+      },
+    });
+
+    return { ok: true, review };
+  }
+
+  reportReview(input) {
+    if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
+    const review = this.reviews.get(input.reviewId);
+    if (!review) return { ok: false, code: "not_found" };
+
+    review.status = "en_revision";
+    review.updatedAt = input.now ?? new Date().toISOString();
+
+    const report = {
+      id: randomId("rep"),
+      reviewId: input.reviewId,
+      reporterUserId: input.actor?.id,
+      reasonCode: input.reasonCode,
+      description: input.description ?? null,
+      status: "queued",
+      createdAt: input.now ?? new Date().toISOString(),
+    };
+
+    this.emitEvent({
+      reviewId: review.id,
+      eventName: "review_sent_to_moderation.v1",
+      correlationId: input.correlationId || randomId("corr"),
+      idempotencyKey: input.idempotencyKey,
+      actorType: "user",
+      actorId: input.actor?.id || "unknown",
+      payload: {
+        reportId: report.id,
+        reasonCode: report.reasonCode,
+      },
+    });
+
+    return { ok: true, report, review };
+  }
+
+  listProviderReviews(input) {
+    const limit = Math.min(Number(input.limit ?? 20), 50);
+    const items = [...this.reviews.values()]
+      .filter((r) => r.providerUserId === input.providerUserId)
+      .filter((r) => r.status === "verificada")
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return { ok: true, items: items.slice(0, limit), nextCursor: null, version: "v1" };
+  }
+
   getEvents() {
     return this.events.slice();
   }
 
   cacheIdempotent(key, result) {
-    this.idempotencyIndex.set(key, result);
+    this.idempotencyIndex.set(key, {
+      result,
+      expiresAt: Date.now() + this.idempotencyTtlMs,
+    });
     return result;
   }
 
   hitVelocityWindow(userId, nowValue) {
     const now = new Date(nowValue ?? Date.now()).getTime();
-    const windowMs = 60 * 1000;
-    const maxPerMinute = 5;
     const list = this.velocityWindowByUser.get(userId) ?? [];
-    const next = list.filter((ts) => now - ts <= windowMs);
+    const next = list.filter((ts) => now - ts <= this.velocityWindowMs);
     next.push(now);
     this.velocityWindowByUser.set(userId, next);
-    return next.length > maxPerMinute;
+    return next.length > this.velocityMaxPerWindow;
   }
 
   emitEvent({ reviewId, eventName, correlationId, idempotencyKey, actorType, actorId, payload }) {
@@ -147,9 +235,28 @@ export class ReviewService {
       idempotencyKey,
       actor: { type: actorType, id: actorId },
       payload,
+      previousEventHash: this.lastEventHash,
     };
     const integrityHash = crypto.createHash("sha256").update(JSON.stringify(envelope)).digest("hex");
-    this.events.push({ ...envelope, integrityHash });
+    const signed = this.eventSigner.signDigest(integrityHash);
+    this.lastEventHash = integrityHash;
+    this.events.push({
+      ...envelope,
+      integrityHash,
+      signature: signed.signature,
+      signatureAlgorithm: signed.algorithm,
+      signatureKeyId: signed.keyId,
+    });
+  }
+
+  getIdempotent(key) {
+    const cached = this.idempotencyIndex.get(key);
+    if (!cached) return null;
+    if (Date.now() > cached.expiresAt) {
+      this.idempotencyIndex.delete(key);
+      return null;
+    }
+    return cached.result;
   }
 }
 
@@ -158,5 +265,15 @@ function pairKey(serviceRequestId, reviewerUserId) {
 }
 
 function randomId(prefix) {
-  return `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
+  return `${prefix}_${crypto.randomUUID()}`;
+}
+
+function isValidIdempotencyKey(value) {
+  return typeof value === "string" && value.trim().length >= 8 && value.trim().length <= 128;
+}
+
+function canModerate(actor) {
+  if (!actor || typeof actor !== "object") return false;
+  if (!actor.id || !Array.isArray(actor.roles)) return false;
+  return actor.roles.includes("moderator");
 }

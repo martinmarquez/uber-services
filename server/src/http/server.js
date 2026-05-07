@@ -102,7 +102,52 @@ async function handleRequest(req, res, deps) {
     return sendJson(res, 201, result);
   }
 
+  if (route.definition.path === "/api/v1/providers/:providerId/reviews") {
+    const list = deps.reviewService.listProviderReviews({
+      providerUserId: route.params.providerId,
+      limit: url.searchParams.get("limit") ?? 20,
+    });
+    return sendJson(res, 200, list);
+  }
+
   if (route.definition.path === "/api/v1/reviews/:reviewId") {
+    const result = deps.reviewService.editReview({
+      reviewId: route.params.reviewId,
+      actor,
+      rating: body.rating,
+      comment: body.comment,
+      now: body.now,
+      correlationId: body.correlationId,
+    });
+
+    if (!result.ok) {
+      return sendJson(res, result.code === "not_found" ? 404 : 409, errorPayload("BUSINESS_RULE_VIOLATION", "Review edit rejected", { code: result.code }));
+    }
+
+    return sendJson(res, 200, result);
+  }
+
+  if (route.definition.path === "/api/v1/reviews/:reviewId/reports") {
+    const result = deps.reviewService.reportReview({
+      idempotencyKey: body.idempotencyKey,
+      reviewId: route.params.reviewId,
+      reasonCode: body.reasonCode,
+      description: body.description,
+      actor,
+      now: body.now,
+      correlationId: body.correlationId,
+    });
+    if (!result.ok) {
+      return sendJson(res, result.code === "not_found" ? 404 : 409, errorPayload("BUSINESS_RULE_VIOLATION", "Review report rejected", { code: result.code }));
+    }
+    return sendJson(res, 202, { ok: true, report: result.report, status: result.review.status });
+  }
+
+  if (route.definition.path === "/api/v1/reviews/:reviewId/appeals") {
+    return sendJson(res, 202, { ok: true, reviewId: route.params.reviewId, appealStatus: "opened" });
+  }
+
+  if (route.definition.path === "/api/v1/reviews/:reviewId/moderation") {
     const result = deps.reviewService.transitionModeration({
       idempotencyKey: body.idempotencyKey,
       reviewId: route.params.reviewId,
@@ -118,14 +163,6 @@ async function handleRequest(req, res, deps) {
     }
 
     return sendJson(res, 200, result);
-  }
-
-  if (route.definition.path === "/api/v1/reviews/:reviewId/reports") {
-    return sendJson(res, 202, { ok: true, reviewId: route.params.reviewId, status: "en_revision", riskScore: 80 });
-  }
-
-  if (route.definition.path === "/api/v1/reviews/:reviewId/appeals") {
-    return sendJson(res, 202, { ok: true, reviewId: route.params.reviewId, appealStatus: "opened" });
   }
 
   return sendJson(res, 404, errorPayload("NOT_FOUND", "Route not found", { code: "route_not_found" }));

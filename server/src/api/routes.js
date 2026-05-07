@@ -26,6 +26,10 @@ export const routes = [
     validateBody: validateCreateReviewPayload,
   },
   {
+    method: "GET",
+    path: "/api/v1/providers/:providerId/reviews",
+  },
+  {
     method: "PATCH",
     path: "/api/v1/reviews/:reviewId",
     validateBody: validatePatchReviewPayload,
@@ -40,6 +44,11 @@ export const routes = [
     path: "/api/v1/reviews/:reviewId/appeals",
     validateBody: (body) => (!body?.note ? "appeal_note_required" : null),
   },
+  {
+    method: "POST",
+    path: "/api/v1/reviews/:reviewId/moderation",
+    validateBody: (body) => (!body?.toStatus ? "to_status_required" : null),
+  },
 ];
 
 export function validateRouteRequest(route, payloadOrReq = {}, maybeCtx = {}) {
@@ -52,9 +61,15 @@ export function validateRouteRequest(route, payloadOrReq = {}, maybeCtx = {}) {
     }
   }
 
-  if (route.path.endsWith("/appeals") && !canModerate(actor)) {
+  if (route.path.endsWith("/moderation") && !canModerate(actor)) {
     return reviewBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
       code: "forbidden_actor",
+    });
+  }
+
+  if (route.path.endsWith("/appeals") && !isAuthenticated(actor)) {
+    return reviewBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
+      code: "unauthenticated",
     });
   }
 
@@ -109,4 +124,8 @@ function canModerate(actor) {
   if (!actor || typeof actor !== "object") return false;
   if (!actor.id || !Array.isArray(actor.roles)) return false;
   return actor.roles.includes("moderator");
+}
+
+function isAuthenticated(actor) {
+  return Boolean(actor && typeof actor === "object" && actor.id);
 }

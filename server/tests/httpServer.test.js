@@ -75,3 +75,83 @@ test("legacy FE alias POST /api/reviews maps to canonical review creation route"
     assert.equal(payload.review.rating, 5);
   });
 });
+
+test("PATCH /api/v1/reviews/:reviewId edits review for owner in window", async () => {
+  await withServer(async (baseUrl) => {
+    const create = await fetch(`${baseUrl}/api/reviews`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_owner1",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-review-edit-1",
+        providerUserId: "prov-1",
+        rating: 4,
+        comment: "Initial",
+        serviceCompletedAt: "2026-05-07T10:00:00.000Z",
+        now: "2026-05-07T11:00:00.000Z",
+      }),
+    });
+    const created = await create.json();
+
+    const patch = await fetch(`${baseUrl}/api/v1/reviews/${created.review.id}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_owner1",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        rating: 5,
+        comment: "Updated",
+        now: "2026-05-07T11:10:00.000Z",
+      }),
+    });
+    assert.equal(patch.status, 200);
+    const payload = await patch.json();
+    assert.equal(payload.review.rating, 5);
+  });
+});
+
+test("GET /api/v1/providers/:providerId/reviews lists public verified reviews only", async () => {
+  await withServer(async (baseUrl) => {
+    const create = await fetch(`${baseUrl}/api/reviews`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_feed1",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-review-feed-1",
+        providerUserId: "prov-1",
+        rating: 5,
+        serviceCompletedAt: "2026-05-07T10:00:00.000Z",
+        now: "2026-05-07T11:00:00.000Z",
+      }),
+    });
+    const created = await create.json();
+
+    await fetch(`${baseUrl}/api/v1/reviews/${created.review.id}/reports`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_report1",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-report-1",
+        reasonCode: "offensive_content",
+      }),
+    });
+
+    const list = await fetch(`${baseUrl}/api/v1/providers/prov-1/reviews?limit=20`);
+    assert.equal(list.status, 200);
+    const payload = await list.json();
+    assert.equal(payload.ok, true);
+    assert.equal(Array.isArray(payload.items), true);
+    assert.equal(payload.items.length, 0);
+  });
+});
