@@ -16,7 +16,8 @@ This scaffold provides the minimum execution surface to unblock RAT-8:
 
 ## Next wiring steps
 
-1. Attach migration runner to target DB (PostgreSQL expected).
-2. Bind route skeletons into chosen HTTP runtime.
-3. Implement repository and event-outbox persistence layer.
-4. Extend integration tests over real DB + idempotency replay.
+1. PostgreSQL migration runner (for `server/migrations/001_reviews_core.sql`) is still pending.
+2. SQLite migration runner is available now:
+`node server/src/db/runSqliteMigrations.js server/.data/reviews-dev.sqlite`
+3. DB-backed repository/outbox integration is available through `SqliteReviewRepository` + `ReviewService({ repository })`.
+4. Promote current SQLite integration tests to CI and add PostgreSQL parity tests.

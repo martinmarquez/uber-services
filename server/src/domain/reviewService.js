@@ -18,6 +18,7 @@ export class ReviewService {
     this.velocityWindowMs = options.velocityWindowMs ?? 60 * 1000;
     this.velocityMaxPerWindow = options.velocityMaxPerWindow ?? 5;
     this.eventSigner = options.eventSigner ?? defaultEventSigner();
+    this.repository = options.repository ?? null;
   }
 
   createReview(input) {
@@ -31,7 +32,7 @@ export class ReviewService {
     const eligibility = isEligibleForReview({
       serviceCompletedAt: input.serviceCompletedAt,
       reviewerMatchesParticipant: input.reviewerMatchesParticipant,
-      alreadyReviewed: this.reviewByPair.has(pairKey(input.serviceRequestId, input.reviewerUserId)),
+      alreadyReviewed: this.hasReviewPair(input.serviceRequestId, input.reviewerUserId),
       rateLimited,
       now: input.now,
     });
@@ -76,8 +77,7 @@ export class ReviewService {
       createdAt: input.now ?? new Date().toISOString(),
       updatedAt: input.now ?? new Date().toISOString(),
     };
-    this.reviews.set(review.id, review);
-    this.reviewByPair.set(pairKey(input.serviceRequestId, input.reviewerUserId), review.id);
+    this.persistReview(review);
 
     this.emitEvent({
       reviewId: review.id,
@@ -100,7 +100,7 @@ export class ReviewService {
     if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
     if (!canModerate(input?.actor)) return { ok: false, code: "forbidden_actor" };
 
-    const review = this.reviews.get(input.reviewId);
+    const review = this.getReviewById(input.reviewId);
     if (!review) return { ok: false, code: "not_found" };
     if (!isTransitionAllowed(review.status, input.toStatus)) return { ok: false, code: "forbidden_transition" };
 
@@ -129,7 +129,7 @@ export class ReviewService {
   }
 
   editReview(input) {
-    const review = this.reviews.get(input.reviewId);
+    const review = this.getReviewById(input.reviewId);
     if (!review) return { ok: false, code: "not_found" };
     if (review.reviewerUserId !== input.actor?.id) return { ok: false, code: "not_owner" };
 
@@ -157,12 +157,13 @@ export class ReviewService {
       },
     });
 
+    this.persistReviewUpdate(review);
     return { ok: true, review };
   }
 
   reportReview(input) {
     if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
-    const review = this.reviews.get(input.reviewId);
+    const review = this.getReviewById(input.reviewId);
     if (!review) return { ok: false, code: "not_found" };
 
     review.status = "en_revision";
@@ -191,27 +192,33 @@ export class ReviewService {
       },
     });
 
+    this.persistReviewUpdate(review);
     return { ok: true, report, review };
   }
 
   listProviderReviews(input) {
     const limit = Math.min(Number(input.limit ?? 20), 50);
-    const items = [...this.reviews.values()]
-      .filter((r) => r.providerUserId === input.providerUserId)
-      .filter((r) => r.status === "verificada")
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    return { ok: true, items: items.slice(0, limit), nextCursor: null, version: "v1" };
+    const items = this.repository
+      ? this.repository.listProviderReviews(input.providerUserId, limit)
+      : [...this.reviews.values()]
+        .filter((r) => r.providerUserId === input.providerUserId)
+        .filter((r) => r.status === "verificada")
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, limit);
+    return { ok: true, items, nextCursor: null, version: "v1" };
   }
 
   getEvents() {
-    return this.events.slice();
+    return this.repository ? this.repository.listEvents() : this.events.slice();
   }
 
   cacheIdempotent(key, result) {
-    this.idempotencyIndex.set(key, {
-      result,
-      expiresAt: Date.now() + this.idempotencyTtlMs,
-    });
+    const expiresAt = Date.now() + this.idempotencyTtlMs;
+    if (this.repository) {
+      this.repository.saveIdempotent(key, result, expiresAt);
+      return result;
+    }
+    this.idempotencyIndex.set(key, { result, expiresAt });
     return result;
   }
 
@@ -240,16 +247,22 @@ export class ReviewService {
     const integrityHash = crypto.createHash("sha256").update(JSON.stringify(envelope)).digest("hex");
     const signed = this.eventSigner.signDigest(integrityHash);
     this.lastEventHash = integrityHash;
-    this.events.push({
+    const event = {
       ...envelope,
       integrityHash,
       signature: signed.signature,
       signatureAlgorithm: signed.algorithm,
       signatureKeyId: signed.keyId,
-    });
+    };
+    if (this.repository) {
+      this.repository.appendEvent(event);
+      return;
+    }
+    this.events.push(event);
   }
 
   getIdempotent(key) {
+    if (this.repository) return this.repository.getIdempotent(key);
     const cached = this.idempotencyIndex.get(key);
     if (!cached) return null;
     if (Date.now() > cached.expiresAt) {
@@ -257,6 +270,33 @@ export class ReviewService {
       return null;
     }
     return cached.result;
+  }
+
+  hasReviewPair(serviceRequestId, reviewerUserId) {
+    if (this.repository) return this.repository.hasReviewPair(serviceRequestId, reviewerUserId);
+    return this.reviewByPair.has(pairKey(serviceRequestId, reviewerUserId));
+  }
+
+  getReviewById(reviewId) {
+    if (this.repository) return this.repository.getReviewById(reviewId);
+    return this.reviews.get(reviewId);
+  }
+
+  persistReview(review) {
+    if (this.repository) {
+      this.repository.createReview(review);
+      return;
+    }
+    this.reviews.set(review.id, review);
+    this.reviewByPair.set(pairKey(review.serviceRequestId, review.reviewerUserId), review.id);
+  }
+
+  persistReviewUpdate(review) {
+    if (this.repository) {
+      this.repository.updateReview(review);
+      return;
+    }
+    this.reviews.set(review.id, review);
   }
 }
 

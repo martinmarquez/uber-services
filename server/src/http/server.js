@@ -3,6 +3,8 @@ import { URL } from "node:url";
 import { DiscoveryBookingService } from "../domain/discoveryBookingService.js";
 import { ReviewService } from "../domain/reviewService.js";
 import { routes, validateRouteRequest } from "../api/routes.js";
+import { SqliteReviewRepository } from "../db/sqliteReviewRepository.js";
+import { runSqliteMigrations } from "../db/runSqliteMigrations.js";
 
 const DEFAULT_PROVIDERS = [
   {
@@ -18,7 +20,7 @@ const DEFAULT_PROVIDERS = [
 
 export function createApiServer(options = {}) {
   const discoveryBookingService = options.discoveryBookingService ?? new DiscoveryBookingService(DEFAULT_PROVIDERS);
-  const reviewService = options.reviewService ?? new ReviewService();
+  const reviewService = options.reviewService ?? createReviewService(options);
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -35,6 +37,15 @@ export function createApiServer(options = {}) {
   });
 
   return server;
+}
+
+function createReviewService(options) {
+  if (options.sqliteDbPath) {
+    runSqliteMigrations({ dbPath: options.sqliteDbPath });
+    const repository = new SqliteReviewRepository({ filename: options.sqliteDbPath });
+    return new ReviewService({ repository });
+  }
+  return new ReviewService();
 }
 
 async function handleRequest(req, res, deps) {

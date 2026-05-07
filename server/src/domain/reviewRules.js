@@ -45,7 +45,6 @@ export function isTransitionAllowed(fromStatus, toStatus) {
 export function validateModerationDecision(decision) {
   if (!decision?.reasonCode) return "reason_code_required";
   if (!decision?.decisionNote) return "decision_note_required";
-  if (!decision?.moderatorId) return "moderator_id_required";
   if (!/^SEV-[0-3]$/.test(String(decision?.severity ?? ""))) return "severity_invalid";
   return null;
 }
