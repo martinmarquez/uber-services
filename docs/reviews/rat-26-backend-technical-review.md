@@ -1,13 +1,13 @@
 # RAT-26 / RAT-5 - Iteracion 1: Review tecnico backend (Rating 360)
 
-Fecha: 2026-05-06
+Fecha: 2026-05-07
 Owner: Back-End
-Estado: En progreso (entregable de iteracion 1)
+Estado: Iteracion 1 actualizada tras governance feedback CTO
 
-## 0) Dependencia de arquitectura (bloqueo)
-- No se encontro `ADR.md` en el repo ni en la carpeta de instrucciones del agente.
-- Impacto: falta confirmar lineamientos globales (patrones de versionado, eventos, cache y auditoria).
-- Accion de desbloqueo: @CTO debe compartir/confirmar ADR vigente para validar decisiones finales antes de implementacion.
+## 0) Marco de arquitectura (gobernanza)
+- Fuente canónica definida por CTO: `$AGENT_HOME/ADR.md`.
+- Estado operativo: continuar implementación en shadow mode aun cuando no exista ADR repo-local.
+- Decisión aplicada: este review queda alineado al criterio de versionado estable, migration-first, idempotencia estricta y trazabilidad por eventos.
 
 ## 1) Contrato API propuesto para coordinacion con Front-End (v1)
 Versionado:
@@ -106,6 +106,45 @@ Reglas:
 - Excluir removidas/no publicadas del feed publico.
 - Mantener consistencia de paginacion por cursor estable.
 
+### 1.6 Respuesta del proveedor a review
+`POST /api/v1/reviews/{reviewId}/response`
+
+Request:
+```json
+{
+  "message": "Gracias por el feedback. Ya corregimos el punto."
+}
+```
+
+Reglas:
+- Solo `target_user_id` (proveedor dueño de la review) puede responder.
+- Una sola respuesta activa por review (admite edición posterior con `PATCH`).
+- Longitud `message`: max 500 chars, sanitizada.
+
+Errores:
+- `403 NOT_REVIEW_TARGET`
+- `409 RESPONSE_ALREADY_EXISTS`
+- `422 REVIEW_NOT_RESPONDABLE` (review removida/no publicada)
+
+### 1.7 Apelación de moderación
+`POST /api/v1/reviews/{reviewId}/appeals`
+
+Request:
+```json
+{
+  "reason": "context_missing",
+  "description": "La remocion no contempla evidencia de servicio."
+}
+```
+
+Response 202:
+```json
+{
+  "appealId": "apl_01J...",
+  "status": "queued"
+}
+```
+
 ## 2) Error envelope estandar (todos los endpoints)
 ```json
 {
@@ -162,13 +201,52 @@ Indices/constraints clave:
 - `last_review_at`
 - `updated_at`
 
+### 3.6 Tabla `review_responses`
+- `id` (pk)
+- `review_id` (fk unique)
+- `responder_user_id` (fk users)
+- `message` (varchar(500))
+- `status` (`active|edited|removed_by_moderation`)
+- `created_at`, `updated_at`
+
+### 3.7 Tabla `review_appeals`
+- `id` (pk)
+- `review_id` (fk)
+- `appellant_user_id` (fk users)
+- `reason_code`
+- `description`
+- `status` (`queued|in_review|accepted|rejected`)
+- `decision_note` (nullable)
+- `created_at`, `resolved_at`
+
 ## 4) AuthN/AuthZ
 - AuthN: JWT/session valida obligatoria en writes.
 - AuthZ reglas minimas:
   - solo actores de ride completado pueden crear review;
   - solo owner puede editar/borrar dentro de ventana;
+  - solo target del review puede responder;
+  - solo actor afectado por moderación puede apelar;
   - moderacion solo rol trust_safety/admin.
 - Anti-replay: `Idempotency-Key` requerido en `POST /reviews` y `POST /reports`.
+
+## 4.1 Lifecycle de estados y transiciones
+
+`reviews.status`:
+- `pending_publication -> published` (job por doble envío o timeout de ventana)
+- `pending_publication -> removed_by_author` (delete owner)
+- `published -> removed_by_author` (delete owner)
+- `pending_publication|published -> removed_by_moderation` (acción trust&safety)
+
+`review_reports.status`:
+- `queued -> in_review -> resolved_valid`
+- `queued -> in_review -> resolved_rejected`
+
+`review_appeals.status`:
+- `queued -> in_review -> accepted`
+- `queued -> in_review -> rejected`
+
+Regla de integridad:
+- Transiciones inválidas devuelven `409 INVALID_STATE_TRANSITION`.
 
 ## 5) Pagos y elegibilidad
 - Reviews habilitadas solo si `ride.status=completed` y `payment.status in (captured, settled)`.
@@ -198,22 +276,26 @@ Happy path:
 - crear review valida en ride elegible;
 - editar dentro de ventana;
 - reportar review y encolar moderacion;
+- responder review por proveedor target;
+- apelar una remocion y encolar revisión;
 - recalculo de agregados tras create/delete.
 
 Edge cases:
 - doble submit con misma idempotency key;
 - actor no elegible;
 - ventana vencida (create/edit);
+- transición inválida de estado (ej. appeal sobre review no moderada);
 - race create simultaneo (constraint unique);
 - timeout en dependencia de agregados (reintentos sin corrupcion);
 - intento de bypass auth en endpoints de moderacion.
 
 ## 10) Riesgos y decisiones pendientes para CTO
-1. Confirmar ADR de versionado/eventos/caching (bloqueante de arquitectura final).
-2. Definir DB principal y estrategia exacta de locking (optimistic vs pessimistic por flujo).
-3. Confirmar SLA y toolchain de moderacion humana.
-4. Alinear con Front-End payload final de tags y catalogo de errores (`code`).
-5. Definir politica de retencion para `review_events` y `review_reports` segun compliance AR.
+1. Definir DB principal y estrategia exacta de locking (optimistic vs pessimistic por flujo).
+2. Confirmar SLA y toolchain de moderacion humana.
+3. Alinear con Front-End payload final de tags, `response.message` y catalogo de errores (`code`).
+4. Definir politica de retencion para `review_events`, `review_reports` y `review_appeals` segun compliance AR.
+5. Congelar política de redondeo/precision del `rating-summary` para evitar drift FE/BE.
 
 ## 11) Proxima accion concreta
-- Crear propuesta de migraciones SQL v1 (`reviews`, `review_tags`, `review_events`, `review_reports`, `review_aggregates`) y test de constraints/idempotencia una vez confirmado ADR.
+- Crear propuesta de migraciones SQL v1 (`reviews`, `review_tags`, `review_events`, `review_reports`, `review_aggregates`, `review_responses`, `review_appeals`) y test de constraints/idempotencia.
+- Publicar comentario de cierre de iteración en RAT-5 con: lifecycle validado, riesgos de consistencia y límites anti-scope.
