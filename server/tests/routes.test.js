@@ -41,6 +41,16 @@ test("validateRouteRequest accepts authorized moderation route", () => {
   assert.equal(err, null);
 });
 
+test("validateRouteRequest accepts authenticated actor for appeals route", () => {
+  const route = byPath("/api/v1/reviews/:reviewId/appeals");
+  const err = validateRouteRequest(
+    route,
+    { note: "Solicito revision por contexto incompleto y evidencia adicional." },
+    { params: { reviewId: "rev_123456" }, actor: { id: "usr_2", roles: ["customer"] } },
+  );
+  assert.equal(err, null);
+});
+
 test("validateRouteRequest rejects non-customer actor for review creation", () => {
   const route = byPath("/api/v1/service-requests/:serviceRequestId/reviews");
   const err = validateRouteRequest(

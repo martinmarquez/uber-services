@@ -58,6 +58,14 @@ export const routes = [
   },
   {
     method: "POST",
+    path: "/api/v1/reviews/:reviewId/response",
+    validateBody: (body) => {
+      const size = String(body?.message ?? "").trim().length;
+      return size >= 1 && size <= 500 ? null : "invalid_response_message";
+    },
+  },
+  {
+    method: "POST",
     path: "/api/v1/reviews/:reviewId/appeals",
     validateBody: (body) => (!body?.note ? "appeal_note_required" : null),
   },
@@ -94,9 +102,15 @@ export function validateRouteRequest(route, payloadOrReq = {}, maybeCtx = {}) {
     });
   }
 
-  if ((route.path.endsWith("/appeals") || route.path.endsWith("/moderation")) && !canModerate(actor)) {
+  if (route.path.endsWith("/moderation") && !canModerate(actor)) {
     return reviewBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
       code: "forbidden_actor",
+    });
+  }
+
+  if (route.path.endsWith("/appeals") && !isAuthenticated(actor)) {
+    return reviewBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
+      code: "unauthenticated",
     });
   }
 
@@ -161,4 +175,9 @@ function isCustomer(actor) {
   if (!actor || typeof actor !== "object") return false;
   if (!actor.id || !Array.isArray(actor.roles)) return false;
   return actor.roles.includes("customer");
+}
+
+function isAuthenticated(actor) {
+  if (!actor || typeof actor !== "object") return false;
+  return typeof actor.id === "string" && actor.id.length >= 3;
 }

@@ -3,11 +3,15 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 export function runPostgresMigrations({ databaseUrl, schema = "public" }) {
-  const sqlPath = path.resolve("server/migrations/001_reviews_core.sql");
-  const sql = fs.readFileSync(sqlPath, "utf8");
-  const wrapped = `create schema if not exists ${ident(schema)}; set search_path to ${ident(schema)}; ${sql}`;
-  psql(databaseUrl, wrapped);
-  return { ok: true, files: [sqlPath], schema };
+  const migrationsDir = path.resolve("server/migrations");
+  const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort();
+  psql(databaseUrl, `create schema if not exists ${ident(schema)};`);
+  for (const file of files) {
+    const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
+    const wrapped = `set search_path to ${ident(schema)}; ${sql}`;
+    psql(databaseUrl, wrapped);
+  }
+  return { ok: true, files: files.map((f) => path.join(migrationsDir, f)), schema };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

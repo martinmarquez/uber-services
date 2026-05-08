@@ -19,6 +19,8 @@ export class ReviewService {
     this.velocityMaxPerWindow = options.velocityMaxPerWindow ?? 5;
     this.eventSigner = options.eventSigner ?? defaultEventSigner();
     this.repository = options.repository ?? null;
+    this.responses = new Map();
+    this.appeals = new Map();
   }
 
   createReview(input) {
@@ -78,6 +80,14 @@ export class ReviewService {
       updatedAt: input.now ?? new Date().toISOString(),
     };
     this.persistReview(review);
+    const scoreInputs = buildScoreInputs({
+      rating: review.rating,
+      serviceCompletedAt: input.serviceCompletedAt,
+      now: input.now,
+      riskScore: review.riskScore,
+      velocityCount: this.currentVelocityCount(input.reviewerUserId),
+      velocityLimit: this.velocityMaxPerWindow,
+    });
 
     this.emitEvent({
       reviewId: review.id,
@@ -90,6 +100,12 @@ export class ReviewService {
         rating: review.rating,
         status: review.status,
         riskScore: review.riskScore,
+        scoreInputs,
+        fraudHeuristics: buildFraudHeuristics({
+          riskScore: review.riskScore,
+          velocityCount: scoreInputs.velocityCount,
+          velocityLimit: this.velocityMaxPerWindow,
+        }),
       },
     });
 
@@ -122,10 +138,98 @@ export class ReviewService {
         severity: input.decision.severity,
         decisionNote: input.decision.decisionNote,
         toStatus: input.toStatus,
+        moderationOutcome: buildModerationOutcome({
+          toStatus: input.toStatus,
+          reasonCode: input.decision.reasonCode,
+          severity: input.decision.severity,
+        }),
+        fraudHeuristics: buildFraudHeuristics({
+          riskScore: review.riskScore,
+          velocityCount: this.currentVelocityCount(review.reviewerUserId),
+          velocityLimit: this.velocityMaxPerWindow,
+          reasonCode: input.decision.reasonCode,
+        }),
       },
     });
 
+    if (input.toStatus === "removida") {
+      this.emitEvent({
+        reviewId: review.id,
+        eventName: "review_removed.v1",
+        correlationId: input.correlationId || randomId("corr"),
+        idempotencyKey: `${input.idempotencyKey}:removed`,
+        actorType: "moderator",
+        actorId: input.actor.id,
+        payload: { reasonCode: input.decision.reasonCode, severity: input.decision.severity },
+      });
+    }
+
+    if (input.toStatus === "verificada") {
+      this.emitEvent({
+        reviewId: review.id,
+        eventName: "review_published.v1",
+        correlationId: input.correlationId || randomId("corr"),
+        idempotencyKey: `${input.idempotencyKey}:published`,
+        actorType: "moderator",
+        actorId: input.actor.id,
+        payload: { source: "moderation_decision" },
+      });
+    }
+
     return { ok: true, review };
+  }
+
+  openAppeal(input) {
+    if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
+    const review = this.getReviewById(input.reviewId);
+    if (!review) return { ok: false, code: "not_found" };
+    if (!input?.actor?.id) return { ok: false, code: "unauthenticated" };
+    if (!input?.note || String(input.note).trim().length < 4) return { ok: false, code: "appeal_note_required" };
+
+    const appeal = {
+      id: randomId("apl"),
+      reviewId: input.reviewId,
+      actorId: input.actor.id,
+      note: input.note,
+      status: "open",
+      createdAt: input.now ?? new Date().toISOString(),
+    };
+
+    this.emitEvent({
+      reviewId: review.id,
+      eventName: "review_appeal_opened.v1",
+      correlationId: input.correlationId || randomId("corr"),
+      idempotencyKey: input.idempotencyKey,
+      actorType: "user",
+      actorId: input.actor.id,
+      payload: { appealId: appeal.id, note: appeal.note },
+    });
+
+    return { ok: true, appeal };
+  }
+
+  closeAppeal(input) {
+    if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
+    const review = this.getReviewById(input.reviewId);
+    if (!review) return { ok: false, code: "not_found" };
+    if (!canModerate(input?.actor)) return { ok: false, code: "forbidden_actor" };
+    if (!input?.appealId) return { ok: false, code: "appeal_id_required" };
+    if (!input?.resolution || !["accepted", "rejected"].includes(input.resolution)) return { ok: false, code: "appeal_resolution_invalid" };
+
+    this.emitEvent({
+      reviewId: review.id,
+      eventName: "review_appeal_closed.v1",
+      correlationId: input.correlationId || randomId("corr"),
+      idempotencyKey: input.idempotencyKey,
+      actorType: "moderator",
+      actorId: input.actor.id,
+      payload: {
+        appealId: input.appealId,
+        resolution: input.resolution,
+      },
+    });
+
+    return { ok: true };
   }
 
   editReview(input) {
@@ -189,6 +293,20 @@ export class ReviewService {
       payload: {
         reportId: report.id,
         reasonCode: report.reasonCode,
+        scoreInputs: buildScoreInputs({
+          rating: review.rating,
+          serviceCompletedAt: review.createdAt,
+          now: input.now,
+          riskScore: review.riskScore,
+          velocityCount: this.currentVelocityCount(review.reviewerUserId),
+          velocityLimit: this.velocityMaxPerWindow,
+        }),
+        fraudHeuristics: buildFraudHeuristics({
+          riskScore: review.riskScore,
+          velocityCount: this.currentVelocityCount(review.reviewerUserId),
+          velocityLimit: this.velocityMaxPerWindow,
+          reasonCode: report.reasonCode,
+        }),
       },
     });
 
@@ -206,6 +324,40 @@ export class ReviewService {
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, limit);
     return { ok: true, items, nextCursor: null, version: "v1" };
+  }
+
+  respondToReview(input) {
+    const review = this.getReviewById(input.reviewId);
+    if (!review) return { ok: false, code: "not_found" };
+    if (review.providerUserId !== input.actor?.id) return { ok: false, code: "not_review_target" };
+    if (review.status !== "verificada") return { ok: false, code: "review_not_respondable" };
+
+    const now = input.now ?? new Date().toISOString();
+    const existing = this.responses.get(review.id);
+    const response = existing
+      ? { ...existing, message: input.message, status: "edited", updatedAt: now }
+      : {
+          id: randomId("resp"),
+          reviewId: review.id,
+          responderUserId: input.actor.id,
+          message: input.message,
+          status: "active",
+          createdAt: now,
+          updatedAt: now,
+        };
+    this.responses.set(review.id, response);
+
+    this.emitEvent({
+      reviewId: review.id,
+      eventName: "review_published.v1",
+      correlationId: input.correlationId || randomId("corr"),
+      idempotencyKey: input.idempotencyKey || randomId("idem"),
+      actorType: "user",
+      actorId: input.actor.id,
+      payload: { action: "provider_response_upserted", responseId: response.id, status: response.status },
+    });
+
+    return { ok: true, response };
   }
 
   getEvents() {
@@ -229,6 +381,10 @@ export class ReviewService {
     next.push(now);
     this.velocityWindowByUser.set(userId, next);
     return next.length > this.velocityMaxPerWindow;
+  }
+
+  currentVelocityCount(userId) {
+    return (this.velocityWindowByUser.get(userId) ?? []).length;
   }
 
   emitEvent({ reviewId, eventName, correlationId, idempotencyKey, actorType, actorId, payload }) {
@@ -317,4 +473,77 @@ function canModerate(actor) {
   if (!actor || typeof actor !== "object") return false;
   if (!actor.id || !Array.isArray(actor.roles)) return false;
   return actor.roles.includes("moderator");
+}
+
+function buildScoreInputs({ rating, serviceCompletedAt, now, riskScore, velocityCount, velocityLimit }) {
+  const priorMean = 3.8;
+  const priorWeight = 8;
+  const ratingNormalized = clamp((Number(rating) - 1) / 4, 0, 1);
+  const ageDays = timeDiffDays(serviceCompletedAt, now);
+  const recencyWeight = clamp(Math.exp(-0.08 * ageDays), 0.35, 1);
+  const confidenceWeight = clamp(1 - (Number(riskScore) || 0) / 200, 0.5, 1);
+  return {
+    bayesianPriorMean: priorMean,
+    bayesianPriorWeight: priorWeight,
+    ratingNormalized: round4(ratingNormalized),
+    recencyDays: round4(ageDays),
+    recencyWeight: round4(recencyWeight),
+    confidenceWeight: round4(confidenceWeight),
+    velocityCount: Number(velocityCount) || 0,
+    velocityLimit: Number(velocityLimit) || 0,
+  };
+}
+
+function buildFraudHeuristics({ riskScore, velocityCount, velocityLimit, reasonCode = null }) {
+  return {
+    riskBand: toRiskBand(riskScore),
+    velocityBand: toVelocityBand(velocityCount, velocityLimit),
+    flaggedByReasonCode: isFraudReason(reasonCode),
+    reasonCode: reasonCode ?? null,
+  };
+}
+
+function buildModerationOutcome({ toStatus, reasonCode, severity }) {
+  return {
+    toStatus,
+    excludedFromPublicScore: toStatus !== "verificada",
+    isFraudConfirmed: isFraudReason(reasonCode),
+    severity,
+  };
+}
+
+function timeDiffDays(from, to) {
+  const fromMs = new Date(from ?? Date.now()).getTime();
+  const toMs = new Date(to ?? Date.now()).getTime();
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs)) return 0;
+  return Math.max(0, (toMs - fromMs) / (1000 * 60 * 60 * 24));
+}
+
+function toRiskBand(score) {
+  const n = Number(score) || 0;
+  if (n >= 85) return "critical";
+  if (n >= 70) return "high";
+  if (n >= 40) return "medium";
+  return "low";
+}
+
+function toVelocityBand(count, limit) {
+  const c = Number(count) || 0;
+  const l = Math.max(1, Number(limit) || 1);
+  if (c > l) return "burst";
+  if (c > Math.floor(l * 0.6)) return "elevated";
+  return "normal";
+}
+
+function isFraudReason(reasonCode) {
+  if (!reasonCode) return false;
+  return /(fraud|risk|collusion|coordinated|manipulation|spam)/i.test(String(reasonCode));
+}
+
+function round4(value) {
+  return Math.round(value * 10000) / 10000;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }

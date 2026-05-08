@@ -215,8 +215,36 @@ async function handleRequest(req, res, deps) {
     return sendJson(res, 202, { ok: true, report: result.report, status: result.review.status });
   }
 
+  if (route.definition.path === "/api/v1/reviews/:reviewId/response") {
+    const result = deps.reviewService.respondToReview({
+      reviewId: route.params.reviewId,
+      actor,
+      message: body.message,
+      idempotencyKey: body.idempotencyKey,
+      correlationId: body.correlationId,
+      now: body.now,
+    });
+    if (!result.ok) {
+      const status = result.code === "not_found" ? 404 : 409;
+      return sendJson(res, status, errorPayload("BUSINESS_RULE_VIOLATION", "Review response rejected", { code: result.code }));
+    }
+    return sendJson(res, 202, result);
+  }
+
   if (route.definition.path === "/api/v1/reviews/:reviewId/appeals") {
-    return sendJson(res, 202, { ok: true, reviewId: route.params.reviewId, appealStatus: "opened" });
+    const result = deps.reviewService.openAppeal({
+      reviewId: route.params.reviewId,
+      actor,
+      note: body.note,
+      idempotencyKey: body.idempotencyKey,
+      correlationId: body.correlationId,
+      now: body.now,
+    });
+    if (!result.ok) {
+      const status = result.code === "not_found" ? 404 : 409;
+      return sendJson(res, status, errorPayload("BUSINESS_RULE_VIOLATION", "Review appeal rejected", { code: result.code }));
+    }
+    return sendJson(res, 202, result);
   }
 
   if (route.definition.path === "/api/v1/reviews/:reviewId/moderation") {

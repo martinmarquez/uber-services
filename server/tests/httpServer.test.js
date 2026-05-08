@@ -351,3 +351,120 @@ test("GET /api/v1/providers/:providerId/reviews lists public verified reviews on
     assert.equal(payload.items.length, 0);
   });
 });
+
+test("POST /api/v1/reviews/:reviewId/response accepts provider target", async () => {
+  await withServer(async (baseUrl) => {
+    const booking = await fetch(`${baseUrl}/api/v1/service-requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_response_owner",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-book-response-1",
+        providerUserId: "prov-1",
+        category: "cleaning",
+        city: "Buenos Aires",
+        notes: "Limpieza semanal hogar",
+        scheduledAt: "2026-05-08T11:00:00.000Z",
+      }),
+    });
+    const bookingPayload = await booking.json();
+
+    const create = await fetch(`${baseUrl}/api/v1/service-requests/${bookingPayload.serviceRequest.id}/reviews`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_response_owner",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-review-response-1",
+        providerUserId: "prov-1",
+        rating: 5,
+        serviceCompletedAt: "2026-05-07T10:00:00.000Z",
+        now: "2026-05-07T11:00:00.000Z",
+      }),
+    });
+    const created = await create.json();
+
+    const response = await fetch(`${baseUrl}/api/v1/reviews/${created.review.id}/response`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "prov-1",
+        "x-actor-roles": "provider",
+      },
+      body: JSON.stringify({ message: "Gracias por tu reseña." }),
+    });
+
+    assert.equal(response.status, 202);
+    const payload = await response.json();
+    assert.equal(payload.ok, true);
+    assert.equal(payload.response.status, "active");
+  });
+});
+
+test("POST /api/v1/reviews/:reviewId/appeals requires authenticated actor", async () => {
+  await withServer(async (baseUrl) => {
+    const booking = await fetch(`${baseUrl}/api/v1/service-requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_appeal_owner",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-book-appeal-1",
+        providerUserId: "prov-1",
+        category: "cleaning",
+        city: "Buenos Aires",
+        notes: "Limpieza quincenal",
+        scheduledAt: "2026-05-08T11:00:00.000Z",
+      }),
+    });
+    const bookingPayload = await booking.json();
+
+    const create = await fetch(`${baseUrl}/api/v1/service-requests/${bookingPayload.serviceRequest.id}/reviews`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_appeal_owner",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-review-appeal-1",
+        providerUserId: "prov-1",
+        rating: 5,
+        serviceCompletedAt: "2026-05-07T10:00:00.000Z",
+        now: "2026-05-07T11:00:00.000Z",
+      }),
+    });
+    const created = await create.json();
+
+    const denied = await fetch(`${baseUrl}/api/v1/reviews/${created.review.id}/appeals`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ note: "Solicito revisión con evidencia." }),
+    });
+    assert.equal(denied.status, 403);
+
+    const accepted = await fetch(`${baseUrl}/api/v1/reviews/${created.review.id}/appeals`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_appeal_owner",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-appeal-post-1",
+        note: "Solicito revisión con evidencia adicional y contexto.",
+      }),
+    });
+    assert.equal(accepted.status, 202);
+    const payload = await accepted.json();
+    assert.equal(payload.ok, true);
+    assert.equal(payload.appeal.status, "open");
+  });
+});
