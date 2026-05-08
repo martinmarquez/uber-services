@@ -34,6 +34,11 @@ export const routes = [
     validateBody: validateCreateReviewPayload,
   },
   {
+    method: "POST",
+    path: "/api/reviews",
+    validateBody: validateCreateReviewPayload,
+  },
+  {
     method: "PATCH",
     path: "/api/v1/reviews/:reviewId",
     validateBody: validatePatchReviewPayload,
@@ -76,6 +81,15 @@ export function validateRouteRequest(route, payloadOrReq = {}, maybeCtx = {}) {
 
   if (route.path === "/api/v1/service-requests" && !isCustomer(actor)) {
     return marketplaceBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
+      code: "forbidden_actor",
+    });
+  }
+
+  if (
+    (route.path === "/api/v1/service-requests/:serviceRequestId/reviews" || route.path === "/api/reviews")
+    && !isCustomer(actor)
+  ) {
+    return reviewBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
       code: "forbidden_actor",
     });
   }

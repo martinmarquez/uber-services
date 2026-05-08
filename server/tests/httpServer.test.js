@@ -102,6 +102,25 @@ test("GET /api/v1/service-requests/:serviceRequestId returns status for owner an
 
 test("legacy FE alias POST /api/reviews maps to canonical review creation route", async () => {
   await withServer(async (baseUrl) => {
+    const booking = await fetch(`${baseUrl}/api/v1/service-requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_123456",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "book-review-1",
+        providerUserId: "prov-1",
+        category: "cleaning",
+        city: "Buenos Aires",
+        notes: "Need deep clean for apartment this Saturday",
+        scheduledAt: "2026-05-11T10:00:00.000Z",
+      }),
+    });
+    assert.equal(booking.status, 201);
+    const bookingPayload = await booking.json();
+
     const response = await fetch(`${baseUrl}/api/reviews`, {
       method: "POST",
       headers: {
@@ -111,7 +130,8 @@ test("legacy FE alias POST /api/reviews maps to canonical review creation route"
       },
       body: JSON.stringify({
         idempotencyKey: "idem-review-1",
-        providerUserId: "prov-1",
+        serviceId: bookingPayload.serviceRequest.id,
+        providerId: "prov-1",
         rating: 5,
         comment: "Excelente servicio y puntualidad.",
         serviceCompletedAt: "2026-05-07T10:00:00.000Z",
@@ -126,8 +146,113 @@ test("legacy FE alias POST /api/reviews maps to canonical review creation route"
   });
 });
 
+test("POST /api/v1/service-requests/:serviceRequestId/reviews rejects non-owner actor", async () => {
+  await withServer(async (baseUrl) => {
+    const booking = await fetch(`${baseUrl}/api/v1/service-requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "cus-owner-1",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "book-review-owner-1",
+        providerUserId: "prov-1",
+        category: "cleaning",
+        city: "Buenos Aires",
+        notes: "Need deep clean for apartment this Saturday",
+        scheduledAt: "2026-05-11T10:00:00.000Z",
+      }),
+    });
+    assert.equal(booking.status, 201);
+    const bookingPayload = await booking.json();
+
+    const response = await fetch(`${baseUrl}/api/v1/service-requests/${bookingPayload.serviceRequest.id}/reviews`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "cus-owner-2",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-review-forbidden-1",
+        providerUserId: "prov-1",
+        rating: 5,
+        serviceCompletedAt: "2026-05-07T10:00:00.000Z",
+      }),
+    });
+
+    assert.equal(response.status, 403);
+    const payload = await response.json();
+    assert.equal(payload.error.code, "BUSINESS_RULE_VIOLATION");
+    assert.equal(payload.error.details.code, "forbidden_actor");
+  });
+});
+
+test("POST /api/v1/service-requests/:serviceRequestId/reviews rejects provider mismatch", async () => {
+  await withServer(async (baseUrl) => {
+    const booking = await fetch(`${baseUrl}/api/v1/service-requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "cus-provider-1",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "book-review-provider-1",
+        providerUserId: "prov-1",
+        category: "cleaning",
+        city: "Buenos Aires",
+        notes: "Need deep clean for apartment this Saturday",
+        scheduledAt: "2026-05-11T10:00:00.000Z",
+      }),
+    });
+    assert.equal(booking.status, 201);
+    const bookingPayload = await booking.json();
+
+    const response = await fetch(`${baseUrl}/api/v1/service-requests/${bookingPayload.serviceRequest.id}/reviews`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "cus-provider-1",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-review-provider-mismatch-1",
+        providerUserId: "prov-2",
+        rating: 5,
+        serviceCompletedAt: "2026-05-07T10:00:00.000Z",
+      }),
+    });
+
+    assert.equal(response.status, 409);
+    const payload = await response.json();
+    assert.equal(payload.error.code, "BUSINESS_RULE_VIOLATION");
+    assert.equal(payload.error.details.code, "provider_mismatch");
+  });
+});
+
 test("PATCH /api/v1/reviews/:reviewId edits review for owner in window", async () => {
   await withServer(async (baseUrl) => {
+    const booking = await fetch(`${baseUrl}/api/v1/service-requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_owner1",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "book-review-edit-1",
+        providerUserId: "prov-1",
+        category: "cleaning",
+        city: "Buenos Aires",
+        notes: "Need deep clean for apartment this Saturday",
+        scheduledAt: "2026-05-11T10:00:00.000Z",
+      }),
+    });
+    assert.equal(booking.status, 201);
+    const bookingPayload = await booking.json();
+
     const create = await fetch(`${baseUrl}/api/reviews`, {
       method: "POST",
       headers: {
@@ -137,7 +262,8 @@ test("PATCH /api/v1/reviews/:reviewId edits review for owner in window", async (
       },
       body: JSON.stringify({
         idempotencyKey: "idem-review-edit-1",
-        providerUserId: "prov-1",
+        serviceId: bookingPayload.serviceRequest.id,
+        providerId: "prov-1",
         rating: 4,
         comment: "Initial",
         serviceCompletedAt: "2026-05-07T10:00:00.000Z",
@@ -167,6 +293,25 @@ test("PATCH /api/v1/reviews/:reviewId edits review for owner in window", async (
 
 test("GET /api/v1/providers/:providerId/reviews lists public verified reviews only", async () => {
   await withServer(async (baseUrl) => {
+    const booking = await fetch(`${baseUrl}/api/v1/service-requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_feed1",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "book-review-feed-1",
+        providerUserId: "prov-1",
+        category: "cleaning",
+        city: "Buenos Aires",
+        notes: "Need deep clean for apartment this Saturday",
+        scheduledAt: "2026-05-11T10:00:00.000Z",
+      }),
+    });
+    assert.equal(booking.status, 201);
+    const bookingPayload = await booking.json();
+
     const create = await fetch(`${baseUrl}/api/reviews`, {
       method: "POST",
       headers: {
@@ -176,7 +321,8 @@ test("GET /api/v1/providers/:providerId/reviews lists public verified reviews on
       },
       body: JSON.stringify({
         idempotencyKey: "idem-review-feed-1",
-        providerUserId: "prov-1",
+        serviceId: bookingPayload.serviceRequest.id,
+        providerId: "prov-1",
         rating: 5,
         serviceCompletedAt: "2026-05-07T10:00:00.000Z",
         now: "2026-05-07T11:00:00.000Z",

@@ -63,9 +63,7 @@ async function handleRequest(req, res, deps) {
     return sendJson(res, 404, errorPayload("NOT_FOUND", "Route not found", { code: "route_not_found" }));
   }
 
-  const bodyForValidation = route.definition.path === "/api/v1/service-requests/:serviceRequestId/reviews"
-    ? { ...body, serviceRequestId: route.params.serviceRequestId }
-    : body;
+  const bodyForValidation = normalizeBodyForValidation(route.definition.path, body, route.params);
 
   const validationError = validateRouteRequest(route.definition, {
     body: bodyForValidation,
@@ -105,12 +103,60 @@ async function handleRequest(req, res, deps) {
   }
 
   if (route.definition.path === "/api/v1/service-requests/:serviceRequestId/reviews") {
+    const ownershipCheck = assertReviewOwnership({
+      discoveryBookingService: deps.discoveryBookingService,
+      actor,
+      serviceRequestId: route.params.serviceRequestId,
+      providerUserId: body.providerUserId,
+    });
+
+    if (ownershipCheck.error) {
+      return sendJson(res, ownershipCheck.status, ownershipCheck.error);
+    }
+
     const result = deps.reviewService.createReview({
       idempotencyKey: body.idempotencyKey,
       serviceRequestId: route.params.serviceRequestId,
       reviewerUserId: actor?.id,
       reviewerMatchesParticipant: true,
       providerUserId: body.providerUserId,
+      rating: body.rating,
+      comment: body.comment,
+      serviceCompletedAt: body.serviceCompletedAt,
+      now: body.now,
+      correlationId: body.correlationId,
+    });
+
+    if (!result.ok) {
+      return sendJson(res, 409, errorPayload("BUSINESS_RULE_VIOLATION", "Review could not be created", {
+        code: result.eligibilityReason || result.code,
+        correlationId: result.correlationId,
+      }));
+    }
+
+    return sendJson(res, 201, result);
+  }
+
+  if (route.definition.path === "/api/reviews") {
+    const serviceRequestId = body.serviceRequestId ?? body.serviceId;
+    const providerUserId = body.providerUserId ?? body.providerId;
+    const ownershipCheck = assertReviewOwnership({
+      discoveryBookingService: deps.discoveryBookingService,
+      actor,
+      serviceRequestId,
+      providerUserId,
+    });
+
+    if (ownershipCheck.error) {
+      return sendJson(res, ownershipCheck.status, ownershipCheck.error);
+    }
+
+    const result = deps.reviewService.createReview({
+      idempotencyKey: body.idempotencyKey,
+      serviceRequestId,
+      reviewerUserId: actor?.id,
+      reviewerMatchesParticipant: true,
+      providerUserId,
       rating: body.rating,
       comment: body.comment,
       serviceCompletedAt: body.serviceCompletedAt,
@@ -205,11 +251,53 @@ function findRoute(method, path) {
 }
 
 function normalizePath(path) {
-  if (path === "/api/reviews") return "/api/v1/service-requests/srv-8241/reviews";
   if (path.startsWith("/api/reviews/") && path.endsWith("/reports")) {
     return `/api/v1/reviews/${path.split("/")[3]}/reports`;
   }
   return path;
+}
+
+function normalizeBodyForValidation(path, body, params) {
+  if (path === "/api/v1/service-requests/:serviceRequestId/reviews") {
+    return { ...body, serviceRequestId: params.serviceRequestId };
+  }
+
+  if (path === "/api/reviews") {
+    return {
+      ...body,
+      serviceRequestId: body.serviceRequestId ?? body.serviceId,
+      providerUserId: body.providerUserId ?? body.providerId,
+    };
+  }
+
+  return body;
+}
+
+function assertReviewOwnership({ discoveryBookingService, actor, serviceRequestId, providerUserId }) {
+  const status = discoveryBookingService.getServiceRequestStatus({ serviceRequestId, actor });
+  if (!status.ok) {
+    const httpStatus = status.code === "not_found" ? 404 : 403;
+    return {
+      status: httpStatus,
+      error: errorPayload("BUSINESS_RULE_VIOLATION", "Review ownership check failed", { code: status.code }),
+    };
+  }
+
+  if (status.serviceRequest.customerUserId !== actor?.id) {
+    return {
+      status: 403,
+      error: errorPayload("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", { code: "forbidden_actor" }),
+    };
+  }
+
+  if (status.serviceRequest.providerUserId !== providerUserId) {
+    return {
+      status: 409,
+      error: errorPayload("BUSINESS_RULE_VIOLATION", "Review ownership check failed", { code: "provider_mismatch" }),
+    };
+  }
+
+  return { status: 200, error: null };
 }
 
 function matchPath(pattern, actual) {

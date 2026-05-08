@@ -40,3 +40,20 @@ test("validateRouteRequest accepts authorized moderation route", () => {
 
   assert.equal(err, null);
 });
+
+test("validateRouteRequest rejects non-customer actor for review creation", () => {
+  const route = byPath("/api/v1/service-requests/:serviceRequestId/reviews");
+  const err = validateRouteRequest(
+    route,
+    {
+      idempotencyKey: "idem-rt-1",
+      providerUserId: "prov-1",
+      rating: 5,
+      serviceCompletedAt: "2026-05-07T10:00:00.000Z",
+    },
+    { params: { serviceRequestId: "sr_123456" }, actor: { id: "prov_1", roles: ["provider"] } },
+  );
+
+  assert.equal(err.error.code, "AUTHORIZATION_ERROR");
+  assert.equal(err.error.details.code, "forbidden_actor");
+});
