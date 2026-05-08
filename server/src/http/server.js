@@ -85,8 +85,23 @@ async function handleRequest(req, res, deps) {
 
   if (route.definition.path === "/api/v1/service-requests") {
     const result = deps.discoveryBookingService.createServiceRequest({ ...body, actor });
-    if (!result.ok) return sendJson(res, 409, errorPayload("BUSINESS_RULE_VIOLATION", "Service request rejected", { code: result.code }));
+    if (!result.ok) {
+      const status = result.code === "rate_limited" ? 429 : 409;
+      return sendJson(res, status, errorPayload("BUSINESS_RULE_VIOLATION", "Service request rejected", { code: result.code }));
+    }
     return sendJson(res, 201, result);
+  }
+
+  if (route.definition.path === "/api/v1/service-requests/:serviceRequestId") {
+    const result = deps.discoveryBookingService.getServiceRequestStatus({
+      serviceRequestId: route.params.serviceRequestId,
+      actor,
+    });
+    if (!result.ok) {
+      const status = result.code === "not_found" ? 404 : 403;
+      return sendJson(res, status, errorPayload("BUSINESS_RULE_VIOLATION", "Service request access rejected", { code: result.code }));
+    }
+    return sendJson(res, 200, result);
   }
 
   if (route.definition.path === "/api/v1/service-requests/:serviceRequestId/reviews") {

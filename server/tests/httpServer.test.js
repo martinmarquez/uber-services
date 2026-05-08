@@ -50,6 +50,56 @@ test("POST /api/v1/service-requests validates payload", async () => {
   });
 });
 
+test("GET /api/v1/service-requests/:serviceRequestId returns status for owner and rejects unrelated actor", async () => {
+  await withServer(async (baseUrl) => {
+    const create = await fetch(`${baseUrl}/api/v1/service-requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "cus-status-1",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "book-status-1",
+        providerUserId: "prov-1",
+        category: "cleaning",
+        city: "Buenos Aires",
+        notes: "Need full home cleaning this weekend",
+        scheduledAt: "2026-05-11T10:00:00.000Z",
+      }),
+    });
+    assert.equal(create.status, 201);
+    const createdPayload = await create.json();
+
+    const ownerRead = await fetch(
+      `${baseUrl}/api/v1/service-requests/${createdPayload.serviceRequest.id}`,
+      {
+        headers: {
+          "x-actor-id": "cus-status-1",
+          "x-actor-roles": "customer",
+        },
+      }
+    );
+    assert.equal(ownerRead.status, 200);
+    const ownerPayload = await ownerRead.json();
+    assert.equal(ownerPayload.ok, true);
+    assert.equal(ownerPayload.serviceRequest.status, "requested");
+
+    const unrelatedRead = await fetch(
+      `${baseUrl}/api/v1/service-requests/${createdPayload.serviceRequest.id}`,
+      {
+        headers: {
+          "x-actor-id": "cus-status-2",
+          "x-actor-roles": "customer",
+        },
+      }
+    );
+    assert.equal(unrelatedRead.status, 403);
+    const errPayload = await unrelatedRead.json();
+    assert.equal(errPayload.error.details.code, "forbidden_actor");
+  });
+});
+
 test("legacy FE alias POST /api/reviews maps to canonical review creation route", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/reviews`, {

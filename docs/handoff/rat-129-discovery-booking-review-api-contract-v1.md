@@ -88,6 +88,31 @@ Route validation errors (`400`):
 Not found (`404`):
 - `not_found`
 
+## Provider Public Reviews
+
+### `GET /api/v1/providers/:providerId/reviews`
+Returns only public/verified reviews (`status=verificada`) for feed/aggregate consumers.
+
+Query params:
+- `limit` (optional): int `1..50` (default 20)
+
+Success (`200`) shape:
+```json
+{
+  "ok": true,
+  "version": "v1",
+  "items": [],
+  "nextCursor": null
+}
+```
+
+## Status Code Mapping
+- `400`: request validation failures (`VALIDATION_ERROR`)
+- `403`: actor authorization failures (`AUTHORIZATION_ERROR` or forbidden access)
+- `404`: route/record not found
+- `409`: business rule violations (for example `provider_not_available`)
+- `429`: rate limit rejection (`rate_limited`)
+
 ## Reviews (existing v1 scope)
 - `POST /api/v1/service-requests/:serviceRequestId/reviews`
 - `PATCH /api/v1/reviews/:reviewId`
