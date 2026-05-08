@@ -4,6 +4,29 @@ Date: 2026-05-07
 Owner: Back-End Developer
 Versioning: `/api/v1`
 
+## Envelope Contract
+
+Success:
+```json
+{
+  "ok": true,
+  "version": "v1"
+}
+```
+
+Error:
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR|AUTHORIZATION_ERROR",
+    "message": "...",
+    "details": {
+      "code": "..."
+    }
+  }
+}
+```
+
 ## Discovery
 
 ### `GET /api/v1/providers/discovery`
@@ -13,42 +36,19 @@ Query params:
 - `limit` (optional): int `1..50` (default 20)
 - `sort` (optional): `rating_desc|distance_asc|price_asc` (default `rating_desc`)
 
-Success `200`:
-```json
-{
-  "ok": true,
-  "version": "v1",
-  "providers": [
-    {
-      "userId": "prov-1",
-      "category": "cleaning",
-      "city": "Buenos Aires",
-      "rating": 4.8,
-      "basePriceArs": 20000,
-      "distanceKm": 3,
-      "isActive": true
-    }
-  ]
-}
-```
-
-Validation error `400`:
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Request query is invalid",
-    "details": {
-      "code": "invalid_category"
-    }
-  }
-}
-```
+Validation errors (`400`):
+- `invalid_category`
+- `invalid_city`
+- `invalid_limit`
+- `invalid_sort`
 
 ## Booking Request
 
 ### `POST /api/v1/service-requests`
-Request body:
+Auth requirement:
+- Actor role must include `customer`.
+
+Body:
 ```json
 {
   "idempotencyKey": "book-idem-1",
@@ -60,45 +60,33 @@ Request body:
 }
 ```
 
-Auth requirement:
-- Actor role must include `customer`.
+Validation errors (`400`):
+- `idempotency_key_required`
+- `provider_user_id_required`
+- `invalid_category`
+- `invalid_city`
+- `invalid_scheduled_at`
+- `invalid_notes`
+- `notes_too_long`
 
-Success `201`:
-```json
-{
-  "ok": true,
-  "version": "v1",
-  "serviceRequest": {
-    "id": "sr_xxx",
-    "customerUserId": "cus-1",
-    "providerUserId": "prov-1",
-    "category": "cleaning",
-    "city": "Buenos Aires",
-    "notes": "Need deep clean for 2-bedroom apartment",
-    "scheduledAt": "2026-05-10T15:00:00.000Z",
-    "status": "requested",
-    "createdAt": "2026-05-07T12:00:00.000Z",
-    "updatedAt": "2026-05-07T12:00:00.000Z"
-  }
-}
-```
+Authorization errors (`403`):
+- `forbidden_actor` (non-`customer` role)
 
-Error shape (deterministic):
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR|AUTHORIZATION_ERROR",
-    "message": "...",
-    "details": {
-      "code": "invalid_notes|invalid_scheduled_at|idempotency_key_required|forbidden_actor"
-    }
-  }
-}
-```
-
-Domain errors (service layer):
-- `rate_limited`
+Domain errors (`409`/`429`, service layer):
 - `provider_not_available`
+- `rate_limited`
+
+## Booking Status
+
+### `GET /api/v1/service-requests/:serviceRequestId`
+Access policy:
+- Allowed actors: booking `customer`, assigned `provider`, or `moderator`.
+
+Route validation errors (`400`):
+- `invalid_service_request_id`
+
+Not found (`404`):
+- `not_found`
 
 ## Reviews (existing v1 scope)
 - `POST /api/v1/service-requests/:serviceRequestId/reviews`
@@ -108,4 +96,4 @@ Domain errors (service layer):
 
 Notes:
 - Canonical moderation statuses remain: `verificada|en_revision|no_recomendada|removida`.
-- Non-canonical route params are rejected with `VALIDATION_ERROR` + `invalid_review_id`.
+- Non-canonical route params are rejected with deterministic `VALIDATION_ERROR`.

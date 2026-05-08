@@ -21,18 +21,30 @@ export const routes = [
     validateBody: validateCreateServiceRequestPayload,
   },
   {
-    method: "POST",
-    path: "/api/v1/service-requests/:serviceRequestId/reviews",
-    validateBody: validateCreateReviewPayload,
+    method: "GET",
+    path: "/api/v1/service-requests/:serviceRequestId",
   },
   {
     method: "GET",
     path: "/api/v1/providers/:providerId/reviews",
   },
   {
+    method: "POST",
+    path: "/api/v1/service-requests/:serviceRequestId/reviews",
+    validateBody: validateCreateReviewPayload,
+  },
+  {
     method: "PATCH",
     path: "/api/v1/reviews/:reviewId",
     validateBody: validatePatchReviewPayload,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/reviews/:reviewId/moderation",
+    validateBody: (body) => {
+      const allowedStatuses = new Set(["en_revision", "no_recomendada", "removida", "verificada"]);
+      return allowedStatuses.has(body?.toStatus) ? null : "invalid_to_status";
+    },
   },
   {
     method: "POST",
@@ -43,11 +55,6 @@ export const routes = [
     method: "POST",
     path: "/api/v1/reviews/:reviewId/appeals",
     validateBody: (body) => (!body?.note ? "appeal_note_required" : null),
-  },
-  {
-    method: "POST",
-    path: "/api/v1/reviews/:reviewId/moderation",
-    validateBody: (body) => (!body?.toStatus ? "to_status_required" : null),
   },
 ];
 
@@ -61,15 +68,21 @@ export function validateRouteRequest(route, payloadOrReq = {}, maybeCtx = {}) {
     }
   }
 
-  if (route.path.endsWith("/moderation") && !canModerate(actor)) {
-    return reviewBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
+  if (route.path.includes(":serviceRequestId")) {
+    if (!isValidServiceRequestId(params?.serviceRequestId)) {
+      return marketplaceBusinessError("VALIDATION_ERROR", "Route params are invalid", { code: "invalid_service_request_id" });
+    }
+  }
+
+  if (route.path === "/api/v1/service-requests" && !isCustomer(actor)) {
+    return marketplaceBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
       code: "forbidden_actor",
     });
   }
 
-  if (route.path.endsWith("/appeals") && !isAuthenticated(actor)) {
+  if ((route.path.endsWith("/appeals") || route.path.endsWith("/moderation")) && !canModerate(actor)) {
     return reviewBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
-      code: "unauthenticated",
+      code: "forbidden_actor",
     });
   }
 
@@ -120,12 +133,18 @@ function isValidReviewId(value) {
   return typeof value === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(value);
 }
 
+function isValidServiceRequestId(value) {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{6,64}$/.test(value);
+}
+
 function canModerate(actor) {
   if (!actor || typeof actor !== "object") return false;
   if (!actor.id || !Array.isArray(actor.roles)) return false;
   return actor.roles.includes("moderator");
 }
 
-function isAuthenticated(actor) {
-  return Boolean(actor && typeof actor === "object" && actor.id);
+function isCustomer(actor) {
+  if (!actor || typeof actor !== "object") return false;
+  if (!actor.id || !Array.isArray(actor.roles)) return false;
+  return actor.roles.includes("customer");
 }

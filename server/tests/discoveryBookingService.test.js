@@ -114,6 +114,34 @@ test("createServiceRequest rejects non-customer actor and unavailable provider",
   assert.equal(unavailable.code, "provider_not_available");
 });
 
+test("getServiceRequestStatus only allows booking participants", () => {
+  const svc = new DiscoveryBookingService(seedProviders);
+  const created = svc.createServiceRequest({
+    idempotencyKey: "book-idem-status-1",
+    providerUserId: "prov-1",
+    category: "cleaning",
+    city: "Buenos Aires",
+    notes: "Need deep clean for 2-bedroom apartment",
+    scheduledAt: "2026-05-10T15:00:00.000Z",
+    now: "2026-05-07T12:00:00.000Z",
+    actor: { id: "cus-1", roles: ["customer"] },
+  });
+
+  const forbidden = svc.getServiceRequestStatus({
+    serviceRequestId: created.serviceRequest.id,
+    actor: { id: "cus-2", roles: ["customer"] },
+  });
+  assert.equal(forbidden.ok, false);
+  assert.equal(forbidden.code, "forbidden_actor");
+
+  const allowed = svc.getServiceRequestStatus({
+    serviceRequestId: created.serviceRequest.id,
+    actor: { id: "prov-1", roles: ["provider"] },
+  });
+  assert.equal(allowed.ok, true);
+  assert.equal(allowed.serviceRequest.status, "requested");
+});
+
 test("create service request payload validates required fields", () => {
   assert.equal(
     validateCreateServiceRequestPayload({
@@ -151,6 +179,7 @@ test("route-level validation for discovery and booking returns deterministic err
   assert.equal(discoveryErr.error.details.code, "invalid_category");
 
   const bookingErr = validateRouteRequest(createServiceRequestRoute, {
+    actor: { id: "cus-1", roles: ["customer"] },
     body: {
       idempotencyKey: "book-idem-6",
       providerUserId: "prov-1",
@@ -159,7 +188,26 @@ test("route-level validation for discovery and booking returns deterministic err
       notes: "tiny",
       scheduledAt: "2026-05-11T10:00:00.000Z",
     },
+    actor: { id: "cus-1", roles: ["customer"] },
   });
   assert.equal(bookingErr.error.code, "VALIDATION_ERROR");
   assert.equal(bookingErr.error.details.code, "invalid_notes");
+});
+
+test("route-level authz denies non-customer service-request creation with AUTHORIZATION_ERROR", () => {
+  const createServiceRequestRoute = routes.find((route) => route.path === "/api/v1/service-requests");
+  const err = validateRouteRequest(createServiceRequestRoute, {
+    body: {
+      idempotencyKey: "book-idem-7",
+      providerUserId: "prov-1",
+      category: "cleaning",
+      city: "Buenos Aires",
+      notes: "Need deep clean for apartment",
+      scheduledAt: "2026-05-11T10:00:00.000Z",
+    },
+    actor: { id: "prov-9", roles: ["provider"] },
+  });
+
+  assert.equal(err.error.code, "AUTHORIZATION_ERROR");
+  assert.equal(err.error.details.code, "forbidden_actor");
 });

@@ -73,6 +73,25 @@ export class DiscoveryBookingService {
     });
   }
 
+  getServiceRequestStatus(input) {
+    const request = this.serviceRequests.get(input.serviceRequestId);
+    if (!request) return { ok: false, code: "not_found" };
+    if (!canAccessRequest(input.actor, request)) return { ok: false, code: "forbidden_actor" };
+
+    return {
+      ok: true,
+      version: "v1",
+      serviceRequest: {
+        id: request.id,
+        status: request.status,
+        scheduledAt: request.scheduledAt,
+        providerUserId: request.providerUserId,
+        customerUserId: request.customerUserId,
+        updatedAt: request.updatedAt,
+      },
+    };
+  }
+
   hitVelocityWindow(userId, nowValue) {
     const now = new Date(nowValue ?? Date.now()).getTime();
     const windowMs = 60 * 1000;
@@ -101,4 +120,11 @@ function isCustomer(actor) {
   if (!actor || typeof actor !== "object") return false;
   if (!actor.id || !Array.isArray(actor.roles)) return false;
   return actor.roles.includes("customer");
+}
+
+function canAccessRequest(actor, request) {
+  if (!actor || typeof actor !== "object") return false;
+  if (!actor.id || !Array.isArray(actor.roles)) return false;
+  if (actor.id === request.customerUserId || actor.id === request.providerUserId) return true;
+  return actor.roles.includes("moderator");
 }
