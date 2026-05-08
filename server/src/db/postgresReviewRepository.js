@@ -165,23 +165,26 @@ export class PostgresReviewRepository {
   }
 
   exec(sql) {
-    execFileSync("psql", ["-X", "-v", "ON_ERROR_STOP=1", "-d", this.databaseUrl, "-c", withSchema(sql, this.schema)], { stdio: "pipe" });
+    execFileSync("psql", ["-X", "-q", "-v", "ON_ERROR_STOP=1", "-d", this.databaseUrl, "-c", withSchema(sql, this.schema)], { stdio: "pipe" });
   }
 
   queryJson(sql) {
     const raw = execFileSync(
       "psql",
-      ["-X", "-v", "ON_ERROR_STOP=1", "-d", this.databaseUrl, "-t", "-A", "-c", withSchema(sql, this.schema)],
+      ["-X", "-q", "-v", "ON_ERROR_STOP=1", "-d", this.databaseUrl, "-t", "-A", "-c", withSchema(sql, this.schema)],
       { encoding: "utf8" },
-    ).trim();
-    if (!raw) return null;
-    return JSON.parse(raw);
+    )
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (raw.length === 0) return null;
+    return JSON.parse(raw[raw.length - 1]);
   }
 
   queryJsonArray(sql) {
     const raw = execFileSync(
       "psql",
-      ["-X", "-v", "ON_ERROR_STOP=1", "-d", this.databaseUrl, "-t", "-A", "-c", withSchema(sql, this.schema)],
+      ["-X", "-q", "-v", "ON_ERROR_STOP=1", "-d", this.databaseUrl, "-t", "-A", "-c", withSchema(sql, this.schema)],
       { encoding: "utf8" },
     )
       .split("\n")

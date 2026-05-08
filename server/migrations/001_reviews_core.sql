@@ -5,13 +5,28 @@ create extension if not exists pgcrypto;
 
 do $$
 begin
-  if not exists (select 1 from pg_type where typname = 'review_status') then
+  if not exists (
+    select 1
+    from pg_type t
+    join pg_namespace n on n.oid = t.typnamespace
+    where t.typname = 'review_status' and n.nspname = current_schema()
+  ) then
     create type review_status as enum ('verificada', 'en_revision', 'no_recomendada', 'removida');
   end if;
-  if not exists (select 1 from pg_type where typname = 'eligibility_result') then
+  if not exists (
+    select 1
+    from pg_type t
+    join pg_namespace n on n.oid = t.typnamespace
+    where t.typname = 'eligibility_result' and n.nspname = current_schema()
+  ) then
     create type eligibility_result as enum ('eligible', 'ineligible');
   end if;
-  if not exists (select 1 from pg_type where typname = 'eligibility_reason') then
+  if not exists (
+    select 1
+    from pg_type t
+    join pg_namespace n on n.oid = t.typnamespace
+    where t.typname = 'eligibility_reason' and n.nspname = current_schema()
+  ) then
     create type eligibility_reason as enum (
       'service_not_completed',
       'outside_14_day_window',
@@ -21,7 +36,12 @@ begin
       'other_policy_violation'
     );
   end if;
-  if not exists (select 1 from pg_type where typname = 'review_event_name') then
+  if not exists (
+    select 1
+    from pg_type t
+    join pg_namespace n on n.oid = t.typnamespace
+    where t.typname = 'review_event_name' and n.nspname = current_schema()
+  ) then
     create type review_event_name as enum (
       'review_eligibility_checked.v1',
       'review_eligibility_failed.v1',
@@ -34,7 +54,12 @@ begin
       'review_appeal_closed.v1'
     );
   end if;
-  if not exists (select 1 from pg_type where typname = 'review_actor_type') then
+  if not exists (
+    select 1
+    from pg_type t
+    join pg_namespace n on n.oid = t.typnamespace
+    where t.typname = 'review_actor_type' and n.nspname = current_schema()
+  ) then
     create type review_actor_type as enum ('system', 'user', 'moderator');
   end if;
 end $$;
@@ -76,6 +101,12 @@ create index if not exists idx_reviews_provider_created_at
 
 create index if not exists idx_review_events_review_id_occurred_at
   on review_events (review_id, occurred_at desc);
+
+create table if not exists idempotency_records (
+  key text primary key,
+  result_json text not null,
+  expires_at bigint not null
+);
 
 create or replace function set_updated_at_reviews()
 returns trigger

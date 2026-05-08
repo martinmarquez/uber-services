@@ -5,10 +5,20 @@ create extension if not exists pgcrypto;
 
 do $$
 begin
-  if not exists (select 1 from pg_type where typname = 'provider_status') then
+  if not exists (
+    select 1
+    from pg_type t
+    join pg_namespace n on n.oid = t.typnamespace
+    where t.typname = 'provider_status' and n.nspname = current_schema()
+  ) then
     create type provider_status as enum ('active', 'paused', 'suspended');
   end if;
-  if not exists (select 1 from pg_type where typname = 'service_request_status') then
+  if not exists (
+    select 1
+    from pg_type t
+    join pg_namespace n on n.oid = t.typnamespace
+    where t.typname = 'service_request_status' and n.nspname = current_schema()
+  ) then
     create type service_request_status as enum ('requested', 'accepted', 'declined', 'completed', 'cancelled');
   end if;
 end $$;
