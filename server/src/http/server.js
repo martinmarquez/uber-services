@@ -5,6 +5,7 @@ import { ReviewService } from "../domain/reviewService.js";
 import { routes, validateRouteRequest } from "../api/routes.js";
 import { SqliteReviewRepository } from "../db/sqliteReviewRepository.js";
 import { runSqliteMigrations } from "../db/runSqliteMigrations.js";
+import { resolveActorFromHeaders } from "../security/actorAuth.js";
 
 const DEFAULT_PROVIDERS = [
   {
@@ -21,10 +22,11 @@ const DEFAULT_PROVIDERS = [
 export function createApiServer(options = {}) {
   const discoveryBookingService = options.discoveryBookingService ?? new DiscoveryBookingService(DEFAULT_PROVIDERS);
   const reviewService = options.reviewService ?? createReviewService(options);
+  const actorAuth = resolveActorAuthOptions(options.actorAuth);
 
   const server = http.createServer(async (req, res) => {
     try {
-      await handleRequest(req, res, { discoveryBookingService, reviewService });
+      await handleRequest(req, res, { discoveryBookingService, reviewService, actorAuth });
     } catch {
       sendJson(res, 500, {
         error: {
@@ -37,6 +39,27 @@ export function createApiServer(options = {}) {
   });
 
   return server;
+}
+
+function resolveActorAuthOptions(actorAuth = {}) {
+  const secret = actorAuth.secret ?? process.env.ACTOR_SIGNING_SECRET ?? null;
+  const enforceSignedActors = actorAuth.enforceSignedActors ?? envFlag(process.env.ACTOR_SIGNING_ENFORCED);
+
+  if (enforceSignedActors && !secret) {
+    throw new Error("ACTOR_SIGNING_ENFORCED requires ACTOR_SIGNING_SECRET");
+  }
+
+  return {
+    ...actorAuth,
+    secret,
+    enforceSignedActors,
+  };
+}
+
+function envFlag(value) {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 function createReviewService(options) {
@@ -55,7 +78,10 @@ async function handleRequest(req, res, deps) {
 
   const method = req.method.toUpperCase();
   const url = new URL(req.url, "http://localhost");
-  const actor = parseActor(req.headers);
+  const { actor, errorCode: actorErrorCode } = resolveActorFromHeaders(req.headers, deps.actorAuth);
+  if (actorErrorCode) {
+    return sendJson(res, 401, errorPayload("AUTHENTICATION_ERROR", "Actor authentication failed", { code: actorErrorCode }));
+  }
   const body = await readJsonBody(req);
 
   const route = findRoute(method, url.pathname);
@@ -73,7 +99,7 @@ async function handleRequest(req, res, deps) {
   });
 
   if (validationError) {
-    const status = validationError.error.code === "AUTHORIZATION_ERROR" ? 403 : 400;
+    const status = statusForValidationError(validationError);
     return sendJson(res, status, validationError);
   }
 
@@ -210,7 +236,7 @@ async function handleRequest(req, res, deps) {
       correlationId: body.correlationId,
     });
     if (!result.ok) {
-      return sendJson(res, result.code === "not_found" ? 404 : 409, errorPayload("BUSINESS_RULE_VIOLATION", "Review report rejected", { code: result.code }));
+      return sendJson(res, statusForReportFailure(result.code), errorPayload("BUSINESS_RULE_VIOLATION", "Review report rejected", { code: result.code }));
     }
     return sendJson(res, 202, { ok: true, report: result.report, status: result.review.status });
   }
@@ -225,7 +251,7 @@ async function handleRequest(req, res, deps) {
       now: body.now,
     });
     if (!result.ok) {
-      const status = result.code === "not_found" ? 404 : 409;
+      const status = statusForResponseFailure(result.code);
       return sendJson(res, status, errorPayload("BUSINESS_RULE_VIOLATION", "Review response rejected", { code: result.code }));
     }
     return sendJson(res, 202, result);
@@ -241,7 +267,7 @@ async function handleRequest(req, res, deps) {
       now: body.now,
     });
     if (!result.ok) {
-      const status = result.code === "not_found" ? 404 : 409;
+      const status = statusForAppealFailure(result.code);
       return sendJson(res, status, errorPayload("BUSINESS_RULE_VIOLATION", "Review appeal rejected", { code: result.code }));
     }
     return sendJson(res, 202, result);
@@ -301,6 +327,35 @@ function normalizeBodyForValidation(path, body, params) {
   return body;
 }
 
+function statusForValidationError(validationError) {
+  if (validationError?.error?.code !== "AUTHORIZATION_ERROR") return 400;
+  const detailCode = validationError.error?.details?.code;
+  if (detailCode === "unauthenticated") return 401;
+  return 403;
+}
+
+function statusForReportFailure(code) {
+  if (code === "not_found") return 404;
+  if (code === "unauthenticated") return 401;
+  if (code === "idempotency_key_required" || code === "reason_code_required") return 400;
+  return 409;
+}
+
+function statusForResponseFailure(code) {
+  if (code === "not_found") return 404;
+  if (code === "invalid_response_message") return 400;
+  if (code === "not_review_target" || code === "review_not_respondable") return 403;
+  return 409;
+}
+
+function statusForAppealFailure(code) {
+  if (code === "not_found") return 404;
+  if (code === "unauthenticated") return 401;
+  if (code === "forbidden_actor") return 403;
+  if (code === "idempotency_key_required" || code === "appeal_note_too_short") return 400;
+  return 409;
+}
+
 function assertReviewOwnership({ discoveryBookingService, actor, serviceRequestId, providerUserId }) {
   const status = discoveryBookingService.getServiceRequestStatus({ serviceRequestId, actor });
   if (!status.ok) {
@@ -343,22 +398,6 @@ function matchPath(pattern, actual) {
     if (expected !== received) return null;
   }
   return params;
-}
-
-function parseActor(headers) {
-  const actorId = headerFirst(headers["x-actor-id"]);
-  const actorRolesRaw = headerFirst(headers["x-actor-roles"]);
-  const roles = typeof actorRolesRaw === "string"
-    ? actorRolesRaw.split(",").map((item) => item.trim()).filter(Boolean)
-    : [];
-
-  if (!actorId) return null;
-  return { id: actorId, roles };
-}
-
-function headerFirst(value) {
-  if (Array.isArray(value)) return value[0];
-  return value;
 }
 
 async function readJsonBody(req) {
