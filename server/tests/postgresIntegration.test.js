@@ -65,6 +65,69 @@ test("postgres idempotency parity", { skip: !hasDatabase }, () => {
   dropSchema(DATABASE_URL, schema);
 });
 
+test("postgres lifecycle migration enforces report idempotency and aggregate constraints", { skip: !hasDatabase }, () => {
+  const schema = `rat8_${Date.now()}_lifecycle`;
+  runPostgresMigrations({ databaseUrl: DATABASE_URL, schema });
+  const repository = new PostgresReviewRepository({ databaseUrl: DATABASE_URL, schema });
+  const service = new ReviewService({ repository });
+  const created = service.createReview({
+    idempotencyKey: "idem-pg-3",
+    serviceRequestId: crypto.randomUUID(),
+    reviewerUserId: crypto.randomUUID(),
+    providerUserId: crypto.randomUUID(),
+    rating: 5,
+    serviceCompletedAt: "2026-05-07T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:10:00.000Z",
+  });
+  assert.equal(created.ok, true);
+
+  repository.exec(`
+    insert into review_reports (
+      review_id, reporter_user_id, reason_code, status, idempotency_key
+    ) values (
+      ${lit(created.review.id)}::uuid,
+      ${lit(crypto.randomUUID())}::uuid,
+      'spam',
+      'queued',
+      'pg-report-idem-1'
+    )
+  `);
+
+  assert.throws(() => {
+    repository.exec(`
+      insert into review_reports (
+        review_id, reporter_user_id, reason_code, status, idempotency_key
+      ) values (
+        ${lit(created.review.id)}::uuid,
+        ${lit(crypto.randomUUID())}::uuid,
+        'fraud',
+        'queued',
+        'pg-report-idem-1'
+      )
+    `);
+  });
+
+  assert.throws(() => {
+    repository.exec(`
+      insert into review_aggregates (
+        provider_user_id, total_reviews, rating_sum, average_rating
+      ) values (
+        ${lit(created.review.providerUserId)}::uuid,
+        -1,
+        5,
+        5
+      )
+    `);
+  });
+
+  dropSchema(DATABASE_URL, schema);
+});
+
 function dropSchema(databaseUrl, schema) {
   execFileSync("psql", ["-X", "-v", "ON_ERROR_STOP=1", "-d", databaseUrl, "-c", `drop schema if exists "${schema}" cascade`], { stdio: "pipe" });
+}
+
+function lit(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
 }
