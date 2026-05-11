@@ -40,4 +40,6 @@
 - Required `ADR.md` was not present in this workspace (`find`/`rg` returned no match). Implementation proceeded aligned to existing backend domain and tests, but architecture-signoff should confirm no missing ADR constraint.
 
 ## Next Action
-- Front-end/API consumer contract alignment: confirm whether `fraudHeuristics.s6Alert` should be treated as additive optional payload in current version or promoted to explicit contract docs with version bump.
+- Contract alignment completed:
+  - Added RAT-376 payload extension details to [RAT-45 domain contract](/Users/martinmarquez/uber-services/docs/reviews/rat-45-be-eligibility-events-moderation-domain-v1.md), with additive `s6Alert` behavior and semantics.
+- No blocking follow-up required pending FE/Moderation consumer acknowledgment of additive optional `s6Alert`.
