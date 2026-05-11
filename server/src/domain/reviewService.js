@@ -28,6 +28,10 @@ export class ReviewService {
     this.appealIdsByReview = new Map();
     this.appealReopenCooldownMs = options.appealReopenCooldownMs ?? 24 * 60 * 60 * 1000;
     this.thresholdVersion = options.thresholdVersion ?? DEFAULT_THRESHOLD_VERSION;
+    this.s6PartialAlertThreshold = Number(options.s6PartialAlertThreshold) > 1
+      ? Math.floor(Number(options.s6PartialAlertThreshold))
+      : 2;
+    this.s6PartialStreakByReview = new Map();
   }
 
   createReview(input) {
@@ -110,11 +114,14 @@ export class ReviewService {
         riskScore: review.riskScore,
         scoreInputs,
         fraudHeuristics: buildFraudHeuristics({
+          reviewId: review.id,
           riskScore: review.riskScore,
           velocityCount: scoreInputs.velocityCount,
           velocityLimit: this.velocityMaxPerWindow,
           sourceAvailability: input.sourceAvailability,
           thresholdVersion: this.thresholdVersion,
+          s6PartialAlertThreshold: this.s6PartialAlertThreshold,
+          s6PartialStreakByReview: this.s6PartialStreakByReview,
         }),
       },
     });
@@ -165,12 +172,15 @@ export class ReviewService {
           severity: input.decision.severity,
         }),
         fraudHeuristics: buildFraudHeuristics({
+          reviewId: review.id,
           riskScore: review.riskScore,
           velocityCount: this.currentVelocityCount(review.reviewerUserId),
           velocityLimit: this.velocityMaxPerWindow,
           reasonCode: input.decision.reasonCode,
           sourceAvailability: input.decision?.sourceAvailability ?? input.sourceAvailability,
           thresholdVersion: this.thresholdVersion,
+          s6PartialAlertThreshold: this.s6PartialAlertThreshold,
+          s6PartialStreakByReview: this.s6PartialStreakByReview,
         }),
       },
     });
@@ -364,12 +374,15 @@ export class ReviewService {
           velocityLimit: this.velocityMaxPerWindow,
         }),
         fraudHeuristics: buildFraudHeuristics({
+          reviewId: review.id,
           riskScore: review.riskScore,
           velocityCount: this.currentVelocityCount(review.reviewerUserId),
           velocityLimit: this.velocityMaxPerWindow,
           reasonCode: report.reasonCode,
           sourceAvailability: input.sourceAvailability,
           thresholdVersion: this.thresholdVersion,
+          s6PartialAlertThreshold: this.s6PartialAlertThreshold,
+          s6PartialStreakByReview: this.s6PartialStreakByReview,
         }),
       },
     });
@@ -647,21 +660,60 @@ function buildScoreInputs({ rating, serviceCompletedAt, now, riskScore, velocity
 }
 
 function buildFraudHeuristics({
+  reviewId = null,
   riskScore,
   velocityCount,
   velocityLimit,
   reasonCode = null,
   sourceAvailability = null,
   thresholdVersion = DEFAULT_THRESHOLD_VERSION,
+  s6PartialAlertThreshold = 2,
+  s6PartialStreakByReview = null,
 }) {
+  const s6Telemetry = buildS6Telemetry({ reasonCode, sourceAvailability });
   return {
     thresholdVersion,
     riskBand: toRiskBand(riskScore),
     velocityBand: toVelocityBand(velocityCount, velocityLimit),
-    s6Telemetry: buildS6Telemetry({ reasonCode, sourceAvailability }),
+    s6Telemetry,
+    s6Alert: buildS6Alert({
+      reviewId,
+      s6Telemetry,
+      threshold: s6PartialAlertThreshold,
+      streakByReview: s6PartialStreakByReview,
+    }),
     flaggedByReasonCode: isFraudReason(reasonCode),
     reasonCode: reasonCode ?? null,
   };
+}
+
+function buildS6Alert({ reviewId, s6Telemetry, threshold, streakByReview }) {
+  const consecutivePartialCount = updateS6PartialStreak({
+    reviewId,
+    status: s6Telemetry?.status,
+    streakByReview,
+  });
+  const isSustainedPartial = consecutivePartialCount >= threshold;
+  return {
+    active: isSustainedPartial,
+    kind: isSustainedPartial ? "sustained_partial_availability" : "none",
+    threshold,
+    consecutivePartialCount,
+  };
+}
+
+function updateS6PartialStreak({ reviewId, status, streakByReview }) {
+  if (!reviewId || !streakByReview || typeof streakByReview.get !== "function") {
+    return status === "partial" ? 1 : 0;
+  }
+  if (status !== "partial") {
+    streakByReview.set(reviewId, 0);
+    return 0;
+  }
+  const current = Number(streakByReview.get(reviewId)) || 0;
+  const next = current + 1;
+  streakByReview.set(reviewId, next);
+  return next;
 }
 
 function buildS6Telemetry({ reasonCode, sourceAvailability }) {

@@ -37,6 +37,8 @@ test("createReview stores review and emits eligibility + created events", () => 
   assert.equal(events[1].payload.fraudHeuristics.riskBand, "low");
   assert.equal(events[1].payload.fraudHeuristics.s6Telemetry.status, "partial");
   assert.equal(events[1].payload.fraudHeuristics.s6Telemetry.completenessRatio, 0);
+  assert.equal(events[1].payload.fraudHeuristics.s6Alert.active, false);
+  assert.equal(events[1].payload.fraudHeuristics.s6Alert.consecutivePartialCount, 1);
   assert.ok(events[1].integrityHash);
   assert.ok(events[1].signature);
   assert.equal(events[0].previousEventHash, null);
@@ -139,6 +141,40 @@ test("allowed moderation transition emits decision event", () => {
   assert.equal(event.payload.moderationOutcome.excludedFromPublicScore, true);
   assert.equal(event.payload.fraudHeuristics.flaggedByReasonCode, true);
   assert.equal(event.payload.fraudHeuristics.s6Telemetry.sourcesPresent, 1);
+});
+
+test("moderation transition uses upstream source-availability telemetry when provided", () => {
+  const svc = new ReviewService();
+  const created = svc.createReview({
+    idempotencyKey: "idem-mod-upstream-1",
+    serviceRequestId: "sr-mod-upstream-1",
+    reviewerUserId: "u-mod-upstream-1",
+    providerUserId: "p-mod-upstream-1",
+    rating: 5,
+    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:00:00.000Z",
+  });
+
+  const transitioned = svc.transitionModeration({
+    reviewId: created.review.id,
+    toStatus: "en_revision",
+    actor: { id: "mod-upstream-1", roles: ["moderator"] },
+    decision: {
+      reasonCode: "risk_high",
+      severity: "SEV-3",
+      decisionNote: "Upstream confirms full signal availability",
+      sourceAvailability: { sourcesExpected: 3, sourcesPresent: 3 },
+    },
+    idempotencyKey: "idem-mod-upstream-op-1",
+  });
+
+  assert.equal(transitioned.ok, true);
+  const event = svc.getEvents().at(-1);
+  assert.equal(event.payload.fraudHeuristics.s6Telemetry.sourcesExpected, 3);
+  assert.equal(event.payload.fraudHeuristics.s6Telemetry.sourcesPresent, 3);
+  assert.equal(event.payload.fraudHeuristics.s6Telemetry.completenessRatio, 1);
+  assert.equal(event.payload.fraudHeuristics.s6Telemetry.status, "complete");
 });
 
 test("moderation transition is idempotent for repeated idempotency key", () => {
@@ -406,6 +442,47 @@ test("closeAppeal rejects unknown appeal id", () => {
   assert.equal(closed.code, "appeal_not_found");
 });
 
+test("closeAppeal is idempotent for repeated idempotency key", () => {
+  const svc = new ReviewService();
+  const created = svc.createReview({
+    idempotencyKey: "idem-appeal-close-idem-review-1",
+    serviceRequestId: "sr-appeal-close-idem-1",
+    reviewerUserId: "u-appeal-close-idem-1",
+    providerUserId: "p-appeal-close-idem-1",
+    rating: 4,
+    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:00:00.000Z",
+  });
+
+  const opened = svc.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: "u-appeal-close-idem-1", roles: ["user"] },
+    note: "Appeal to be closed idempotently.",
+    idempotencyKey: "idem-appeal-close-idem-open-1",
+  });
+  assert.equal(opened.ok, true);
+
+  const firstClose = svc.closeAppeal({
+    reviewId: created.review.id,
+    actor: { id: "mod-close-idem-1", roles: ["moderator"] },
+    appealId: opened.appeal.id,
+    resolution: "accepted",
+    idempotencyKey: "idem-appeal-close-idem-op-1",
+  });
+  const secondClose = svc.closeAppeal({
+    reviewId: created.review.id,
+    actor: { id: "mod-close-idem-1", roles: ["moderator"] },
+    appealId: opened.appeal.id,
+    resolution: "accepted",
+    idempotencyKey: "idem-appeal-close-idem-op-1",
+  });
+
+  assert.equal(firstClose.ok, true);
+  assert.equal(secondClose.ok, true);
+  assert.equal(secondClose.replay, true);
+});
+
 test("editReview allows owner within edit window", () => {
   const svc = new ReviewService();
   const created = svc.createReview({
@@ -495,6 +572,116 @@ test("fraud heuristics propagate configured threshold version", () => {
   assert.equal(created.ok, true);
   const createdEvent = svc.getEvents().at(-1);
   assert.equal(createdEvent.payload.fraudHeuristics.thresholdVersion, "anti_gaming_v2_2026-05-11");
+});
+
+test("createReview uses upstream source-availability telemetry when provided", () => {
+  const svc = new ReviewService();
+  const created = svc.createReview({
+    idempotencyKey: "idem-source-availability-create-1",
+    serviceRequestId: "sr-source-availability-create-1",
+    reviewerUserId: "u-source-availability-create-1",
+    providerUserId: "p-source-availability-create-1",
+    rating: 5,
+    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    sourceAvailability: { expected: 4, present: 2 },
+    now: "2026-05-07T00:00:00.000Z",
+  });
+
+  assert.equal(created.ok, true);
+  const event = svc.getEvents().at(-1);
+  assert.equal(event.payload.fraudHeuristics.s6Telemetry.sourcesExpected, 4);
+  assert.equal(event.payload.fraudHeuristics.s6Telemetry.sourcesPresent, 2);
+  assert.equal(event.payload.fraudHeuristics.s6Telemetry.completenessRatio, 0.5);
+  assert.equal(event.payload.fraudHeuristics.s6Telemetry.status, "partial");
+});
+
+test("sustained partial S6 availability raises alert after threshold", () => {
+  const svc = new ReviewService({ s6PartialAlertThreshold: 2 });
+  const created = svc.createReview({
+    idempotencyKey: "idem-s6-alert-1",
+    serviceRequestId: "sr-s6-alert-1",
+    reviewerUserId: "u-s6-alert-1",
+    providerUserId: "p-s6-alert-1",
+    rating: 5,
+    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    sourceAvailability: { expected: 4, present: 2 },
+    now: "2026-05-07T00:00:00.000Z",
+  });
+  assert.equal(created.ok, true);
+  const createdEvent = svc.getEvents().at(-1);
+  assert.equal(createdEvent.payload.fraudHeuristics.s6Alert.active, false);
+  assert.equal(createdEvent.payload.fraudHeuristics.s6Alert.consecutivePartialCount, 1);
+
+  const transitioned = svc.transitionModeration({
+    reviewId: created.review.id,
+    toStatus: "en_revision",
+    actor: { id: "mod-s6-alert-1", roles: ["moderator"] },
+    decision: {
+      reasonCode: "risk_high",
+      severity: "SEV-2",
+      decisionNote: "still partial upstream availability",
+      sourceAvailability: { expected: 4, present: 1 },
+    },
+    idempotencyKey: "idem-s6-alert-2",
+  });
+  assert.equal(transitioned.ok, true);
+  const moderationEvent = svc.getEvents().at(-1);
+  assert.equal(moderationEvent.payload.fraudHeuristics.s6Alert.active, true);
+  assert.equal(
+    moderationEvent.payload.fraudHeuristics.s6Alert.kind,
+    "sustained_partial_availability",
+  );
+  assert.equal(moderationEvent.payload.fraudHeuristics.s6Alert.consecutivePartialCount, 2);
+});
+
+test("S6 partial alert resets when completeness becomes complete", () => {
+  const svc = new ReviewService({ s6PartialAlertThreshold: 2 });
+  const created = svc.createReview({
+    idempotencyKey: "idem-s6-reset-1",
+    serviceRequestId: "sr-s6-reset-1",
+    reviewerUserId: "u-s6-reset-1",
+    providerUserId: "p-s6-reset-1",
+    rating: 5,
+    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    sourceAvailability: { expected: 4, present: 1 },
+    now: "2026-05-07T00:00:00.000Z",
+  });
+  svc.transitionModeration({
+    reviewId: created.review.id,
+    toStatus: "en_revision",
+    actor: { id: "mod-s6-reset-1", roles: ["moderator"] },
+    decision: {
+      reasonCode: "risk_high",
+      severity: "SEV-2",
+      decisionNote: "keeps partial",
+      sourceAvailability: { expected: 4, present: 2 },
+    },
+    idempotencyKey: "idem-s6-reset-2",
+  });
+  const sustainedEvent = svc.getEvents().at(-1);
+  assert.equal(sustainedEvent.payload.fraudHeuristics.s6Alert.active, true);
+  assert.equal(sustainedEvent.payload.fraudHeuristics.s6Alert.consecutivePartialCount, 2);
+
+  const completeTransition = svc.transitionModeration({
+    reviewId: created.review.id,
+    toStatus: "no_recomendada",
+    actor: { id: "mod-s6-reset-1", roles: ["moderator"] },
+    decision: {
+      reasonCode: "risk_high",
+      severity: "SEV-2",
+      decisionNote: "signal recovered",
+      sourceAvailability: { expected: 4, present: 4 },
+    },
+    idempotencyKey: "idem-s6-reset-3",
+  });
+  assert.equal(completeTransition.ok, true);
+  const recoveredEvent = svc.getEvents().at(-1);
+  assert.equal(recoveredEvent.payload.fraudHeuristics.s6Telemetry.status, "complete");
+  assert.equal(recoveredEvent.payload.fraudHeuristics.s6Alert.active, false);
+  assert.equal(recoveredEvent.payload.fraudHeuristics.s6Alert.consecutivePartialCount, 0);
 });
 
 test("reportReview rejects unauthenticated actor", () => {
