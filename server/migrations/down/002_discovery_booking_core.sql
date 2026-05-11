@@ -1,0 +1,1 @@
+-- Keep review rollback orthogonal to booking schema.

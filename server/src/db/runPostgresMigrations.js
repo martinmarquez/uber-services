@@ -2,9 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
-export function runPostgresMigrations({ databaseUrl, schema = "public" }) {
-  const migrationsDir = path.resolve("server/migrations");
-  const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort();
+export function runPostgresMigrations({ databaseUrl, schema = "public", direction = "up" }) {
+  const migrationsDir = direction === "down"
+    ? path.resolve("server/migrations/down")
+    : path.resolve("server/migrations");
+  const files = getMigrationFiles(migrationsDir, direction);
   psql(databaseUrl, `create schema if not exists ${ident(schema)};`);
   for (const file of files) {
     const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
@@ -17,11 +19,12 @@ export function runPostgresMigrations({ databaseUrl, schema = "public" }) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const databaseUrl = process.argv[2] ?? process.env.DATABASE_URL;
   const schema = process.argv[3] ?? process.env.PG_SCHEMA ?? "public";
+  const direction = process.argv[4] ?? "up";
   if (!databaseUrl) {
     process.stderr.write("DATABASE_URL required\n");
     process.exit(1);
   }
-  const result = runPostgresMigrations({ databaseUrl, schema });
+  const result = runPostgresMigrations({ databaseUrl, schema, direction });
   process.stdout.write(`migrations_applied=${result.files.length} schema=${result.schema}\n`);
 }
 
@@ -31,4 +34,9 @@ function psql(databaseUrl, sql) {
 
 function ident(value) {
   return `"${String(value).replace(/"/g, "\"\"")}"`;
+}
+
+function getMigrationFiles(migrationsDir, direction) {
+  const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort();
+  return direction === "down" ? files.reverse() : files;
 }
