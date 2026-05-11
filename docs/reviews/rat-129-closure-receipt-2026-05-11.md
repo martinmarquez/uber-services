@@ -49,3 +49,9 @@ Executed targeted tests for RAT-129 contracts and route guardrails:
 
 - Liveness continuation reviewed.
 - Result unchanged: backend scope complete, tests green, `RAT-129` must remain `DONE`.
+
+## Final Execution Stop Marker
+
+- This issue has no remaining backend tasks.
+- No child tasks are required.
+- Run is intentionally concluded after this marker with `RAT-129` kept in `DONE`.
