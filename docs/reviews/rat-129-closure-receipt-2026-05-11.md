@@ -55,3 +55,10 @@ Executed targeted tests for RAT-129 contracts and route guardrails:
 - This issue has no remaining backend tasks.
 - No child tasks are required.
 - Run is intentionally concluded after this marker with `RAT-129` kept in `DONE`.
+
+## Workflow State Blocker (2026-05-11)
+
+- Blocker type: lifecycle/state drift (not technical).
+- Technical status: complete; no pending backend deliverables.
+- Unblock owner: CTO/Issue board owner.
+- Required unblock action: set `RAT-129` status to `done` and stop liveness wakeups for this issue unless new scope is attached.
