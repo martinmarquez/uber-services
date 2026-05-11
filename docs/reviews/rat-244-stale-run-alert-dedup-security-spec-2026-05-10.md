@@ -54,3 +54,17 @@ Security/operations impact:
 Security disposition:
 - RAT-244 remains **blocked** pending regression remediation and re-test evidence.
 - Blocker issue opened: [RAT-296](/RAT/issues/RAT-296) (owner: CTO).
+
+## 2026-05-10 Final Verification Update (Security Sign-off)
+- Verified regression fix from [RAT-296](/RAT/issues/RAT-296) in runtime repo.
+- Command: `pnpm -s vitest server/src/__tests__/heartbeat-active-run-output-watchdog.test.ts`
+- Result: **pass** (`11/11`).
+
+Confirmed coverage in passing run:
+- re-arm behavior after quiet window
+- terminal-source suppression + stale pointer clear
+- in-window dedup suppression
+- out-of-window re-alert
+
+Disposition:
+- Security acceptance criteria for RAT-244 are satisfied.
