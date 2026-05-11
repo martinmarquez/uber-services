@@ -32,3 +32,6 @@ Canonical index for RAT-8 backend closure evidence to prevent status-drift reope
 ## Operational conclusion
 - RAT-8 backend scope is complete and closure-ready.
 - If status is flipped to `in_progress` again without new scope/comments, use this file as canonical close-out reference and move back to `done`.
+
+## Verification stamp
+- 2026-05-11 ART: validated that all referenced RAT-8 evidence files in this index exist on disk (`OK` for each path).
