@@ -38,3 +38,9 @@ Executed targeted tests for RAT-129 contracts and route guardrails:
 
 - Keep `RAT-129` in `done`.
 - Reopen only if a new functional requirement extends discovery/booking/review APIs beyond this delivered contract baseline.
+
+## Final Close Confirmation (Liveness Continuation)
+
+- Heartbeat date: 2026-05-11
+- Confirmation: `RAT-129` remains `DONE`; no open backend blocker/action remains.
+- Governance note: Any future scope expansion must reopen under a new functional requirement artifact, not by liveness continuation.
