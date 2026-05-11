@@ -1,0 +1,8 @@
+RAT-786 formal blocker normalization check
+date=2026-05-11T10:03:16Z
+PASS: analysis artifact exists
+PASS: handoff artifact exists
+PASS: RAT-594 -> RAT-568 contract documented
+PASS: RAT-614 -> RAT-591 contract documented
+PASS: control-plane handoff includes RAT-614 -> RAT-591
+RESULT=PASS
