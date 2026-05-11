@@ -66,3 +66,21 @@ Verificación ejecutada:
 
 Riesgo abierto menor:
 - Ejecutar el mismo test con `DATABASE_URL` en CI/paridad Postgres para validar reversibilidad completa en runtime objetivo.
+
+## Update 2026-05-11 (concurrencia lifecycle)
+
+En respuesta a sweep de estado (RAT-556), se deja evidencia de ejecución activa con cobertura de carrera entre instancias para lifecycle de apelaciones.
+
+- Commit: `2fc89ae`
+- Cambios:
+  - `server/tests/sqliteIntegration.test.js`
+  - `server/tests/postgresIntegration.test.js`
+  - Nuevo edge case: `openAppeal` concurrente entre dos instancias con distintas `idempotencyKey`; solo una apertura debe persistir y la segunda debe fallar con `appeal_already_open`.
+
+Verificación ejecutada:
+- `node --test server/tests/sqliteIntegration.test.js server/tests/postgresIntegration.test.js`
+  - SQLite: pass (incluye nuevo test de carrera)
+  - Postgres: skip automático sin `DATABASE_URL`
+
+Próxima acción concreta:
+- Ejecutar suite Postgres con `DATABASE_URL` para cerrar evidencia de concurrencia + rollback en runtime objetivo.
