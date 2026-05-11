@@ -42,3 +42,19 @@
 
 ## Updated next action
 - Execute the same Postgres integration suite with runtime `DATABASE_URL` to produce non-skipped evidence for appeal/report/tag/aggregate persistence parity.
+
+## Postgres runtime evidence (non-skipped)
+- Ran integration suite against real `DATABASE_URL` using isolated Docker Postgres instance.
+- Runtime connection used during test execution:
+  - `postgres://postgres:postgres@127.0.0.1:55432/rat321`
+- Command:
+  - `DATABASE_URL='postgres://postgres:postgres@127.0.0.1:55432/rat321' node --test server/tests/postgresIntegration.test.js`
+- Result:
+  - `4` tests passed, `0` skipped, `0` failed.
+
+## Defects found and fixed during evidence run
+1. Foreign-key setup gap in Postgres integration tests (`reviews.service_request_id` FK):
+- Added test seeding helper to insert `providers` + `service_requests` before `createReview` flows.
+
+2. UUID compatibility bug for lifecycle entity IDs in Postgres-backed flows:
+- Updated `randomId()` to emit UUIDs for `rep`, `apl`, and `resp` entities (in addition to `rev` and `evt`).

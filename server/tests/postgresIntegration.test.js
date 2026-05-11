@@ -15,11 +15,16 @@ test("postgres migration runner + review persistence parity", { skip: !hasDataba
   const repository = new PostgresReviewRepository({ databaseUrl: DATABASE_URL, schema });
   const service = new ReviewService({ repository });
 
+  const serviceRequestId = crypto.randomUUID();
+  const reviewerUserId = crypto.randomUUID();
+  const providerUserId = crypto.randomUUID();
+  seedServiceRequest(repository, { serviceRequestId, reviewerUserId, providerUserId });
+
   const created = service.createReview({
     idempotencyKey: "idem-pg-1",
-    serviceRequestId: crypto.randomUUID(),
-    reviewerUserId: crypto.randomUUID(),
-    providerUserId: crypto.randomUUID(),
+    serviceRequestId,
+    reviewerUserId,
+    providerUserId,
     rating: 5,
     comment: "Persisted in postgres",
     serviceCompletedAt: "2026-05-07T00:00:00.000Z",
@@ -45,11 +50,15 @@ test("postgres idempotency parity", { skip: !hasDatabase }, () => {
   runPostgresMigrations({ databaseUrl: DATABASE_URL, schema });
   const repository = new PostgresReviewRepository({ databaseUrl: DATABASE_URL, schema });
   const service = new ReviewService({ repository });
+  const serviceRequestId = crypto.randomUUID();
+  const reviewerUserId = crypto.randomUUID();
+  const providerUserId = crypto.randomUUID();
+  seedServiceRequest(repository, { serviceRequestId, reviewerUserId, providerUserId });
   const input = {
     idempotencyKey: "idem-pg-2",
-    serviceRequestId: crypto.randomUUID(),
-    reviewerUserId: crypto.randomUUID(),
-    providerUserId: crypto.randomUUID(),
+    serviceRequestId,
+    reviewerUserId,
+    providerUserId,
     rating: 4,
     serviceCompletedAt: "2026-05-07T00:00:00.000Z",
     reviewerMatchesParticipant: true,
@@ -70,11 +79,16 @@ test("postgres lifecycle migration enforces report idempotency and aggregate con
   runPostgresMigrations({ databaseUrl: DATABASE_URL, schema });
   const repository = new PostgresReviewRepository({ databaseUrl: DATABASE_URL, schema });
   const service = new ReviewService({ repository });
+  const serviceRequestId = crypto.randomUUID();
+  const reviewerUserId = crypto.randomUUID();
+  const providerUserId = crypto.randomUUID();
+  seedServiceRequest(repository, { serviceRequestId, reviewerUserId, providerUserId });
+
   const created = service.createReview({
     idempotencyKey: "idem-pg-3",
-    serviceRequestId: crypto.randomUUID(),
-    reviewerUserId: crypto.randomUUID(),
-    providerUserId: crypto.randomUUID(),
+    serviceRequestId,
+    reviewerUserId,
+    providerUserId,
     rating: 5,
     serviceCompletedAt: "2026-05-07T00:00:00.000Z",
     reviewerMatchesParticipant: true,
@@ -129,12 +143,17 @@ test("postgres storage-backed appeal state works across service instances", { sk
   runPostgresMigrations({ databaseUrl: DATABASE_URL, schema });
   const repository = new PostgresReviewRepository({ databaseUrl: DATABASE_URL, schema });
 
+  const serviceRequestId = crypto.randomUUID();
+  const reviewerUserId = crypto.randomUUID();
+  const providerUserId = crypto.randomUUID();
+  seedServiceRequest(repository, { serviceRequestId, reviewerUserId, providerUserId });
+
   const serviceA = new ReviewService({ repository, appealReopenCooldownMs: 60 * 60 * 1000 });
   const created = serviceA.createReview({
     idempotencyKey: "idem-pg-appeal-persist-1",
-    serviceRequestId: crypto.randomUUID(),
-    reviewerUserId: crypto.randomUUID(),
-    providerUserId: crypto.randomUUID(),
+    serviceRequestId,
+    reviewerUserId,
+    providerUserId,
     rating: 5,
     serviceCompletedAt: "2026-05-07T00:00:00.000Z",
     reviewerMatchesParticipant: true,
@@ -182,4 +201,44 @@ function dropSchema(databaseUrl, schema) {
 
 function lit(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function seedServiceRequest(repository, { serviceRequestId, reviewerUserId, providerUserId }) {
+  repository.exec(`
+    insert into providers (user_id, category, city, status, rating, base_price_ars)
+    values (
+      ${lit(providerUserId)}::uuid,
+      'cleaning',
+      'Buenos Aires',
+      'active',
+      4.5,
+      20000
+    )
+    on conflict (user_id) do nothing
+  `);
+
+  repository.exec(`
+    insert into service_requests (
+      id,
+      customer_user_id,
+      provider_user_id,
+      category,
+      city,
+      notes,
+      scheduled_at,
+      status,
+      idempotency_key
+    ) values (
+      ${lit(serviceRequestId)}::uuid,
+      ${lit(reviewerUserId)}::uuid,
+      ${lit(providerUserId)}::uuid,
+      'cleaning',
+      'Buenos Aires',
+      'Seed request for RAT-321 postgres integration',
+      '2026-05-07T00:00:00.000Z'::timestamptz,
+      'completed',
+      ${lit(`seed-${serviceRequestId}`)}
+    )
+    on conflict (id) do nothing
+  `);
 }

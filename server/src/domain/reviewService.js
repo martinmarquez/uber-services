@@ -226,7 +226,18 @@ export class ReviewService {
       createdAt: input.now ?? new Date().toISOString(),
       closedAt: null,
     };
-    this.persistAppeal(appeal);
+    try {
+      this.persistAppeal(appeal, {
+        resume: input.resume === true,
+        now: appeal.createdAt,
+        appealReopenCooldownMs: this.appealReopenCooldownMs,
+      });
+    } catch (error) {
+      if (isAppealConstraintViolation(error, "appeal_already_open")) return { ok: false, code: "appeal_already_open" };
+      if (isAppealConstraintViolation(error, "appeal_resume_required")) return { ok: false, code: "appeal_resume_required" };
+      if (isAppealConstraintViolation(error, "appeal_cooldown_active")) return { ok: false, code: "appeal_cooldown_active" };
+      throw error;
+    }
 
     this.emitEvent({
       reviewId: review.id,
@@ -250,7 +261,7 @@ export class ReviewService {
     if (!canModerate(input?.actor)) return { ok: false, code: "forbidden_actor" };
     if (!input?.appealId) return { ok: false, code: "appeal_id_required" };
     if (!input?.resolution || !["accepted", "rejected"].includes(input.resolution)) return { ok: false, code: "appeal_resolution_invalid" };
-    const appeal = this.appeals.get(input.appealId);
+    const appeal = this.getAppealById(input.appealId);
     if (!appeal || appeal.reviewId !== input.reviewId) return { ok: false, code: "appeal_not_found" };
     if (appeal.status !== "open") return { ok: false, code: "appeal_not_open" };
     appeal.status = "closed";
@@ -510,8 +521,16 @@ export class ReviewService {
     this.reviews.set(review.id, review);
   }
 
-  persistAppeal(appeal) {
-    if (this.repository?.upsertAppeal) this.repository.upsertAppeal(appeal);
+  persistAppeal(appeal, options = null) {
+    if (this.repository?.createAppeal && appeal.status === "open") {
+      this.repository.createAppeal(appeal, options ?? {
+        resume: false,
+        now: appeal.createdAt,
+        appealReopenCooldownMs: this.appealReopenCooldownMs,
+      });
+    } else if (this.repository?.upsertAppeal) {
+      this.repository.upsertAppeal(appeal);
+    }
     this.appeals.set(appeal.id, appeal);
     const ids = this.appealIdsByReview.get(appeal.reviewId) ?? [];
     if (!ids.includes(appeal.id)) ids.push(appeal.id);
@@ -550,6 +569,11 @@ export class ReviewService {
     return latest;
   }
 
+  getAppealById(appealId) {
+    if (this.repository?.getAppealById) return this.repository.getAppealById(appealId);
+    return this.appeals.get(appealId);
+  }
+
   inAppealCooldown(closedAt, now) {
     const closedAtMs = new Date(closedAt).getTime();
     const nowMs = new Date(now ?? Date.now()).getTime();
@@ -579,7 +603,9 @@ function pairKey(serviceRequestId, reviewerUserId) {
 }
 
 function randomId(prefix) {
-  if (prefix === "rev" || prefix === "evt") return crypto.randomUUID();
+  if (prefix === "rev" || prefix === "evt" || prefix === "rep" || prefix === "apl" || prefix === "resp") {
+    return crypto.randomUUID();
+  }
   return `${prefix}_${crypto.randomUUID()}`;
 }
 
@@ -591,6 +617,10 @@ function canModerate(actor) {
   if (!actor || typeof actor !== "object") return false;
   if (!actor.id || !Array.isArray(actor.roles)) return false;
   return actor.roles.includes("moderator");
+}
+
+function isAppealConstraintViolation(error, code) {
+  return Boolean(error && typeof error === "object" && error.code === code);
 }
 
 function buildScoreInputs({ rating, serviceCompletedAt, now, riskScore, velocityCount, velocityLimit }) {
