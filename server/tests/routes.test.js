@@ -51,6 +51,39 @@ test("validateRouteRequest accepts authenticated actor for appeals route", () =>
   assert.equal(err, null);
 });
 
+test("validateRouteRequest rejects short appeal note payload", () => {
+  const route = byPath("/api/v1/reviews/:reviewId/appeals");
+  const err = validateRouteRequest(
+    route,
+    { note: "muy corto" },
+    { params: { reviewId: "rev_123456" }, actor: { id: "usr_2", roles: ["customer"] } },
+  );
+  assert.equal(err.error.code, "VALIDATION_ERROR");
+  assert.equal(err.error.details.code, "appeal_note_too_short");
+});
+
+test("validateRouteRequest rejects non-boolean resume flag for appeals route", () => {
+  const route = byPath("/api/v1/reviews/:reviewId/appeals");
+  const err = validateRouteRequest(
+    route,
+    { note: "Solicito revisión con contexto adicional suficiente.", resume: "yes" },
+    { params: { reviewId: "rev_123456" }, actor: { id: "usr_2", roles: ["customer"] } },
+  );
+  assert.equal(err.error.code, "VALIDATION_ERROR");
+  assert.equal(err.error.details.code, "invalid_resume_flag");
+});
+
+test("validateRouteRequest rejects unauthenticated actor for reports route", () => {
+  const route = byPath("/api/v1/reviews/:reviewId/reports");
+  const err = validateRouteRequest(
+    route,
+    { reasonCode: "spam" },
+    { params: { reviewId: "rev_123456" }, actor: null },
+  );
+  assert.equal(err.error.code, "AUTHORIZATION_ERROR");
+  assert.equal(err.error.details.code, "unauthenticated");
+});
+
 test("validateRouteRequest rejects non-customer actor for review creation", () => {
   const route = byPath("/api/v1/service-requests/:serviceRequestId/reviews");
   const err = validateRouteRequest(

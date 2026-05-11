@@ -262,6 +262,7 @@ async function handleRequest(req, res, deps) {
       reviewId: route.params.reviewId,
       actor,
       note: body.note,
+      resume: body.resume,
       idempotencyKey: body.idempotencyKey,
       correlationId: body.correlationId,
       now: body.now,
@@ -352,7 +353,7 @@ function statusForAppealFailure(code) {
   if (code === "not_found") return 404;
   if (code === "unauthenticated") return 401;
   if (code === "forbidden_actor") return 403;
-  if (code === "idempotency_key_required" || code === "appeal_note_too_short") return 400;
+  if (code === "idempotency_key_required" || code === "appeal_note_too_short" || code === "invalid_resume_flag") return 400;
   return 409;
 }
 

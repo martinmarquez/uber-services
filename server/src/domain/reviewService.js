@@ -6,6 +6,10 @@ import {
 } from "./reviewRules.js";
 import { defaultEventSigner } from "../security/eventIntegrity.js";
 
+const RECENCY_HALF_LIFE_DAYS = 120;
+const RECENCY_LAMBDA = Math.log(2) / RECENCY_HALF_LIFE_DAYS;
+const DEFAULT_THRESHOLD_VERSION = "anti_gaming_v1_2026-05-10";
+
 export class ReviewService {
   constructor(options = {}) {
     this.reviews = new Map();
@@ -21,6 +25,9 @@ export class ReviewService {
     this.repository = options.repository ?? null;
     this.responses = new Map();
     this.appeals = new Map();
+    this.appealIdsByReview = new Map();
+    this.appealReopenCooldownMs = options.appealReopenCooldownMs ?? 24 * 60 * 60 * 1000;
+    this.thresholdVersion = options.thresholdVersion ?? DEFAULT_THRESHOLD_VERSION;
   }
 
   createReview(input) {
@@ -105,6 +112,7 @@ export class ReviewService {
           riskScore: review.riskScore,
           velocityCount: scoreInputs.velocityCount,
           velocityLimit: this.velocityMaxPerWindow,
+          thresholdVersion: this.thresholdVersion,
         }),
       },
     });
@@ -115,6 +123,8 @@ export class ReviewService {
   transitionModeration(input) {
     if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
     if (!canModerate(input?.actor)) return { ok: false, code: "forbidden_actor" };
+    const replay = this.getIdempotent(input.idempotencyKey);
+    if (replay) return { replay: true, ...replay };
 
     const review = this.getReviewById(input.reviewId);
     if (!review) return { ok: false, code: "not_found" };
@@ -148,6 +158,7 @@ export class ReviewService {
           velocityCount: this.currentVelocityCount(review.reviewerUserId),
           velocityLimit: this.velocityMaxPerWindow,
           reasonCode: input.decision.reasonCode,
+          thresholdVersion: this.thresholdVersion,
         }),
       },
     });
@@ -176,15 +187,23 @@ export class ReviewService {
       });
     }
 
-    return { ok: true, review };
+    return this.cacheIdempotent(input.idempotencyKey, { ok: true, review });
   }
 
   openAppeal(input) {
     if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
+    const replay = this.getIdempotent(input.idempotencyKey);
+    if (replay) return { replay: true, ...replay };
     const review = this.getReviewById(input.reviewId);
     if (!review) return { ok: false, code: "not_found" };
     if (!input?.actor?.id) return { ok: false, code: "unauthenticated" };
-    if (!input?.note || String(input.note).trim().length < 4) return { ok: false, code: "appeal_note_required" };
+    if (review.reviewerUserId !== input.actor.id) return { ok: false, code: "forbidden_actor" };
+    if (!input?.note || String(input.note).trim().length < 10) return { ok: false, code: "appeal_note_too_short" };
+    const existingOpen = this.findOpenAppealByReviewId(input.reviewId);
+    if (existingOpen) return { ok: false, code: "appeal_already_open" };
+    const latestClosed = this.findLatestClosedAppealByReviewId(input.reviewId);
+    if (latestClosed && input.resume !== true) return { ok: false, code: "appeal_resume_required" };
+    if (latestClosed && this.inAppealCooldown(latestClosed.closedAt, input.now)) return { ok: false, code: "appeal_cooldown_active" };
 
     const appeal = {
       id: randomId("apl"),
@@ -193,7 +212,9 @@ export class ReviewService {
       note: input.note,
       status: "open",
       createdAt: input.now ?? new Date().toISOString(),
+      closedAt: null,
     };
+    this.persistAppeal(appeal);
 
     this.emitEvent({
       reviewId: review.id,
@@ -205,7 +226,7 @@ export class ReviewService {
       payload: { appealId: appeal.id, note: appeal.note },
     });
 
-    return { ok: true, appeal };
+    return this.cacheIdempotent(input.idempotencyKey, { ok: true, appeal });
   }
 
   closeAppeal(input) {
@@ -215,6 +236,13 @@ export class ReviewService {
     if (!canModerate(input?.actor)) return { ok: false, code: "forbidden_actor" };
     if (!input?.appealId) return { ok: false, code: "appeal_id_required" };
     if (!input?.resolution || !["accepted", "rejected"].includes(input.resolution)) return { ok: false, code: "appeal_resolution_invalid" };
+    const appeal = this.appeals.get(input.appealId);
+    if (!appeal || appeal.reviewId !== input.reviewId) return { ok: false, code: "appeal_not_found" };
+    if (appeal.status !== "open") return { ok: false, code: "appeal_not_open" };
+    appeal.status = "closed";
+    appeal.resolution = input.resolution;
+    appeal.closedAt = input.now ?? new Date().toISOString();
+    this.persistAppeal(appeal);
 
     this.emitEvent({
       reviewId: review.id,
@@ -229,7 +257,7 @@ export class ReviewService {
       },
     });
 
-    return { ok: true };
+    return this.cacheIdempotent(input.idempotencyKey, { ok: true });
   }
 
   editReview(input) {
@@ -269,6 +297,7 @@ export class ReviewService {
     if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
     const review = this.getReviewById(input.reviewId);
     if (!review) return { ok: false, code: "not_found" };
+    if (!input?.actor?.id) return { ok: false, code: "unauthenticated" };
 
     review.status = "en_revision";
     review.updatedAt = input.now ?? new Date().toISOString();
@@ -306,6 +335,7 @@ export class ReviewService {
           velocityCount: this.currentVelocityCount(review.reviewerUserId),
           velocityLimit: this.velocityMaxPerWindow,
           reasonCode: report.reasonCode,
+          thresholdVersion: this.thresholdVersion,
         }),
       },
     });
@@ -454,6 +484,42 @@ export class ReviewService {
     }
     this.reviews.set(review.id, review);
   }
+
+  persistAppeal(appeal) {
+    this.appeals.set(appeal.id, appeal);
+    const ids = this.appealIdsByReview.get(appeal.reviewId) ?? [];
+    if (!ids.includes(appeal.id)) ids.push(appeal.id);
+    this.appealIdsByReview.set(appeal.reviewId, ids);
+  }
+
+  findOpenAppealByReviewId(reviewId) {
+    const ids = this.appealIdsByReview.get(reviewId) ?? [];
+    for (const id of ids) {
+      const appeal = this.appeals.get(id);
+      if (appeal?.status === "open") return appeal;
+    }
+    return null;
+  }
+
+  findLatestClosedAppealByReviewId(reviewId) {
+    const ids = this.appealIdsByReview.get(reviewId) ?? [];
+    let latest = null;
+    for (const id of ids) {
+      const appeal = this.appeals.get(id);
+      if (!appeal?.closedAt) continue;
+      if (!latest || new Date(appeal.closedAt).getTime() > new Date(latest.closedAt).getTime()) {
+        latest = appeal;
+      }
+    }
+    return latest;
+  }
+
+  inAppealCooldown(closedAt, now) {
+    const closedAtMs = new Date(closedAt).getTime();
+    const nowMs = new Date(now ?? Date.now()).getTime();
+    if (Number.isNaN(closedAtMs) || Number.isNaN(nowMs)) return false;
+    return nowMs - closedAtMs < this.appealReopenCooldownMs;
+  }
 }
 
 function pairKey(serviceRequestId, reviewerUserId) {
@@ -480,26 +546,50 @@ function buildScoreInputs({ rating, serviceCompletedAt, now, riskScore, velocity
   const priorWeight = 8;
   const ratingNormalized = clamp((Number(rating) - 1) / 4, 0, 1);
   const ageDays = timeDiffDays(serviceCompletedAt, now);
-  const recencyWeight = clamp(Math.exp(-0.08 * ageDays), 0.35, 1);
+  const recencyDecayWeight = Math.exp(-RECENCY_LAMBDA * ageDays);
+  const recencyFactor = 0.85 + 0.15 * ratingNormalized;
   const confidenceWeight = clamp(1 - (Number(riskScore) || 0) / 200, 0.5, 1);
   return {
     bayesianPriorMean: priorMean,
     bayesianPriorWeight: priorWeight,
     ratingNormalized: round4(ratingNormalized),
     recencyDays: round4(ageDays),
-    recencyWeight: round4(recencyWeight),
+    recencyHalfLifeDays: RECENCY_HALF_LIFE_DAYS,
+    recencyLambda: round8(RECENCY_LAMBDA),
+    recencyDecayWeight: round4(recencyDecayWeight),
+    recencyFactor: round4(recencyFactor),
     confidenceWeight: round4(confidenceWeight),
     velocityCount: Number(velocityCount) || 0,
     velocityLimit: Number(velocityLimit) || 0,
   };
 }
 
-function buildFraudHeuristics({ riskScore, velocityCount, velocityLimit, reasonCode = null }) {
+function buildFraudHeuristics({
+  riskScore,
+  velocityCount,
+  velocityLimit,
+  reasonCode = null,
+  thresholdVersion = DEFAULT_THRESHOLD_VERSION,
+}) {
   return {
+    thresholdVersion,
     riskBand: toRiskBand(riskScore),
     velocityBand: toVelocityBand(velocityCount, velocityLimit),
+    s6Telemetry: buildS6Telemetry({ reasonCode }),
     flaggedByReasonCode: isFraudReason(reasonCode),
     reasonCode: reasonCode ?? null,
+  };
+}
+
+function buildS6Telemetry({ reasonCode }) {
+  const hasReasonCode = typeof reasonCode === "string" && reasonCode.trim().length > 0;
+  const sourcesPresent = hasReasonCode ? 1 : 0;
+  const sourcesExpected = 3;
+  return {
+    sourcesExpected,
+    sourcesPresent,
+    completenessRatio: round4(sourcesPresent / sourcesExpected),
+    status: sourcesPresent === sourcesExpected ? "complete" : "partial",
   };
 }
 
@@ -542,6 +632,10 @@ function isFraudReason(reasonCode) {
 
 function round4(value) {
   return Math.round(value * 10000) / 10000;
+}
+
+function round8(value) {
+  return Math.round(value * 100000000) / 100000000;
 }
 
 function clamp(value, min, max) {

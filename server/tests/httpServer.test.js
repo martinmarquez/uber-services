@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { createApiServer } from "../src/http/server.js";
+import { ReviewService } from "../src/domain/reviewService.js";
 
 test("createApiServer fails fast when ACTOR_SIGNING_ENFORCED is enabled without secret", () => {
   const originalEnforced = process.env.ACTOR_SIGNING_ENFORCED;
@@ -554,6 +555,68 @@ test("POST /api/v1/reviews/:reviewId/appeals requires authenticated actor", asyn
     assert.equal(payload.ok, true);
     assert.equal(payload.appeal.status, "open");
   });
+});
+
+test("POST /api/v1/reviews/:reviewId/appeals blocks reopen unless resume=true", async () => {
+  const reviewService = new ReviewService({ appealReopenCooldownMs: 0 });
+  const created = reviewService.createReview({
+    idempotencyKey: "idem-http-resume-review-1",
+    serviceRequestId: "sr-http-resume-1",
+    reviewerUserId: "usr_resume_owner",
+    providerUserId: "prov-1",
+    rating: 4,
+    serviceCompletedAt: "2026-05-07T10:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T11:00:00.000Z",
+  });
+  const opened = reviewService.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: "usr_resume_owner", roles: ["customer"] },
+    note: "Primera apelación con detalle suficiente.",
+    idempotencyKey: "idem-http-resume-open-1",
+  });
+  reviewService.closeAppeal({
+    reviewId: created.review.id,
+    actor: { id: "mod_resume_1", roles: ["moderator"] },
+    appealId: opened.appeal.id,
+    resolution: "rejected",
+    idempotencyKey: "idem-http-resume-close-1",
+  });
+
+  await withServer(async (baseUrl) => {
+    const denied = await fetch(`${baseUrl}/api/v1/reviews/${created.review.id}/appeals`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_resume_owner",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-http-resume-open-2",
+        note: "Intento de reapertura sin bandera resume.",
+      }),
+    });
+    assert.equal(denied.status, 409);
+    const deniedPayload = await denied.json();
+    assert.equal(deniedPayload.error.details.code, "appeal_resume_required");
+
+    const accepted = await fetch(`${baseUrl}/api/v1/reviews/${created.review.id}/appeals`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_resume_owner",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-http-resume-open-3",
+        note: "Intento de reapertura con bandera resume habilitada.",
+        resume: true,
+      }),
+    });
+    assert.equal(accepted.status, 202);
+    const acceptedPayload = await accepted.json();
+    assert.equal(acceptedPayload.ok, true);
+  }, { reviewService });
 });
 
 test("POST /api/v1/reviews/:reviewId/reports requires authenticated actor", async () => {

@@ -30,6 +30,7 @@ export function validateReportPayload(payload) {
 export function validateAppealPayload(payload) {
   if (!payload || typeof payload !== "object") return "invalid_payload";
   if (typeof payload.note !== "string" || payload.note.trim().length < 10) return "appeal_note_too_short";
+  if (payload.resume !== undefined && typeof payload.resume !== "boolean") return "invalid_resume_flag";
   return null;
 }
 
