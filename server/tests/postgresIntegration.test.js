@@ -124,6 +124,58 @@ test("postgres lifecycle migration enforces report idempotency and aggregate con
   dropSchema(DATABASE_URL, schema);
 });
 
+test("postgres storage-backed appeal state works across service instances", { skip: !hasDatabase }, () => {
+  const schema = `rat8_${Date.now()}_appeal_persist`;
+  runPostgresMigrations({ databaseUrl: DATABASE_URL, schema });
+  const repository = new PostgresReviewRepository({ databaseUrl: DATABASE_URL, schema });
+
+  const serviceA = new ReviewService({ repository, appealReopenCooldownMs: 60 * 60 * 1000 });
+  const created = serviceA.createReview({
+    idempotencyKey: "idem-pg-appeal-persist-1",
+    serviceRequestId: crypto.randomUUID(),
+    reviewerUserId: crypto.randomUUID(),
+    providerUserId: crypto.randomUUID(),
+    rating: 5,
+    serviceCompletedAt: "2026-05-07T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:10:00.000Z",
+  });
+  assert.equal(created.ok, true);
+
+  const opened = serviceA.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: created.review.reviewerUserId, roles: ["customer"] },
+    note: "Primera apelacion persistida en postgres.",
+    idempotencyKey: "idem-pg-appeal-persist-open-1",
+    now: "2026-05-07T01:00:00.000Z",
+  });
+  assert.equal(opened.ok, true);
+
+  const serviceB = new ReviewService({ repository, appealReopenCooldownMs: 60 * 60 * 1000 });
+  const closed = serviceB.closeAppeal({
+    reviewId: created.review.id,
+    actor: { id: "mod-pg-appeal-persist-1", roles: ["moderator"] },
+    appealId: opened.appeal.id,
+    resolution: "rejected",
+    idempotencyKey: "idem-pg-appeal-persist-close-1",
+    now: "2026-05-07T01:10:00.000Z",
+  });
+  assert.equal(closed.ok, true);
+
+  const deniedDuringCooldown = serviceB.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: created.review.reviewerUserId, roles: ["customer"] },
+    note: "Reapertura en cooldown sobre postgres.",
+    idempotencyKey: "idem-pg-appeal-persist-open-2",
+    resume: true,
+    now: "2026-05-07T01:20:00.000Z",
+  });
+  assert.equal(deniedDuringCooldown.ok, false);
+  assert.equal(deniedDuringCooldown.code, "appeal_cooldown_active");
+
+  dropSchema(DATABASE_URL, schema);
+});
+
 function dropSchema(databaseUrl, schema) {
   execFileSync("psql", ["-X", "-v", "ON_ERROR_STOP=1", "-d", databaseUrl, "-c", `drop schema if exists "${schema}" cascade`], { stdio: "pipe" });
 }

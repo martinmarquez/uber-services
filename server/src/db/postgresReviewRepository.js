@@ -153,6 +153,30 @@ export class PostgresReviewRepository {
     }));
   }
 
+  getAppealById(appealId) {
+    const row = this.queryJson(`
+      select row_to_json(t) as row
+      from (
+        select
+          id::text as id,
+          review_id::text as "reviewId",
+          appellant_user_id as "actorId",
+          note,
+          status,
+          created_at::text as "createdAt",
+          resolved_at::text as "closedAt"
+        from review_appeals
+        where id = ${lit(appealId)}::uuid
+      ) t
+    `);
+    if (!row) return null;
+    return {
+      ...row,
+      status: fromAppealStatus(row.status),
+      resolution: row.status === "resolved" ? "accepted" : row.status === "rejected" ? "rejected" : undefined,
+    };
+  }
+
   upsertReviewTag({ reviewId, tag, source = "moderator", createdAt }) {
     this.exec(`
       insert into review_tags (review_id, tag, source, created_at)
