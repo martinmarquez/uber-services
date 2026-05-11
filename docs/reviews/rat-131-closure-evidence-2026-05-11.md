@@ -31,3 +31,8 @@ RAT-131 satisfies its implementation objective and has no active blocker. Keep i
 - 2026-05-11: issue state was corrected to `todo` by automation due to missing active run handle, not due to a delivery regression.
 - Implementation/test evidence remains valid in commits `9d16240` and `b152e97`.
 - On resume checkout, status should return to `done` unless new scope is explicitly added.
+
+## Status Hygiene Note (RAT-556 Follow-up)
+- 2026-05-11 21:17:07Z: state-correction sweep moved issue from `in_progress` to `todo` because no active execution handle was present and the ticket age in `in_progress` exceeded 2 hours.
+- This is an execution-state correction only; it does not change implementation completeness or invalidate prior verification evidence.
+- Assignee handoff action on re-checkout: set/confirm final disposition as `done` with closure references `9d16240`, `b152e97`, and `e530c89`.
