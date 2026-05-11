@@ -5,6 +5,7 @@ import MobileReviewFlow from "./MobileReviewFlow";
 
 const mockFetchReviews = vi.fn();
 const mockDiscoverProviders = vi.fn();
+const mockCreateReview = vi.fn();
 
 vi.mock("../analytics/reviewExperimentTracking", () => ({
   getOrCreateReviewExperimentAssignment: () => ({
@@ -22,8 +23,8 @@ vi.mock("../analytics/reviewExperimentTracking", () => ({
 
 vi.mock("../api/reviewsApi", () => ({
   fetchReviews: (...args) => mockFetchReviews(...args),
-  createReview: vi.fn().mockResolvedValue({ review: { status: "verified" } }),
-  reportReview: vi.fn().mockResolvedValue({ status: "under_review", riskScore: 82 }),
+  createReview: (...args) => mockCreateReview(...args),
+  reportReview: vi.fn().mockResolvedValue({ status: "en_revision", riskScore: 82 }),
   respondToReview: vi.fn().mockResolvedValue({ providerResponse: "Gracias por tu comentario." }),
 }));
 
@@ -34,6 +35,7 @@ vi.mock("../api/discoveryBookingApi", () => ({
 
 describe("MobileReviewFlow", () => {
   beforeEach(() => {
+    mockCreateReview.mockResolvedValue({ review: { status: "verificada" } });
     mockDiscoverProviders.mockResolvedValue({
       providers: [
         {
@@ -60,11 +62,20 @@ describe("MobileReviewFlow", () => {
     expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
   });
 
+  it("keeps discovery usable with fallback providers when live discovery fails", async () => {
+    mockDiscoverProviders.mockRejectedValueOnce(new Error("network_error"));
+    render(<MobileReviewFlow />);
+
+    expect(await screen.findByText("No pudimos cargar descubrimiento en vivo. Reintentá en unos segundos.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Plomeria Norte/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Limpieza Express/i })).toBeInTheDocument();
+  });
+
   it("keeps selected filter after retrying reviews load", async () => {
     mockFetchReviews
       .mockRejectedValueOnce(new Error("temporary_error"))
       .mockRejectedValueOnce(new Error("temporary_error"))
-      .mockResolvedValueOnce({ items: [{ id: "rev_1abcde", provider: "Gas Norte", service: "Revision", createdAt: "Hoy", rating: 5, verified: true, riskScore: 10, status: "verified", tags: ["Excelente"], comment: "Perfecto", providerResponse: "Gracias" }] });
+      .mockResolvedValueOnce({ items: [{ id: "rev_1abcde", provider: "Gas Norte", service: "Revision", createdAt: "Hoy", rating: 5, verified: true, riskScore: 10, status: "verificada", tags: ["Excelente"], comment: "Perfecto", providerResponse: "Gracias" }] });
 
     render(<MobileReviewFlow />);
     const criticalFilter = await screen.findByRole("button", { name: "1-2★" });
@@ -73,7 +84,7 @@ describe("MobileReviewFlow", () => {
     const retry = await screen.findByRole("button", { name: "Reintentar" });
     await userEvent.click(retry);
 
-    await waitFor(() => expect(mockFetchReviews).toHaveBeenLastCalledWith({ serviceId: "srv-8241", filter: "critical" }));
+    await waitFor(() => expect(mockFetchReviews).toHaveBeenLastCalledWith({ providerId: "prov-1" }));
   });
 
   it("supports keyboard control for star rating", async () => {
@@ -84,5 +95,19 @@ describe("MobileReviewFlow", () => {
 
     const twoStar = screen.getByRole("radio", { name: "2 estrellas" });
     expect(twoStar).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("shows failed submission feedback when create review API fails", async () => {
+    mockCreateReview.mockRejectedValueOnce(new Error("forbidden_actor"));
+    render(<MobileReviewFlow />);
+
+    const oneStar = await screen.findByRole("radio", { name: "1 estrella" });
+    await userEvent.click(oneStar);
+    const submit = screen.getByRole("button", { name: "Enviar reseña" });
+    await userEvent.click(submit);
+
+    await waitFor(() => {
+      expect(screen.getByText("No pudimos enviar la reseña. Reintentá en unos segundos.")).toBeInTheDocument();
+    });
   });
 });

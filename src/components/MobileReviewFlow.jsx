@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./MobileReviewFlow.css";
 import {
+  normalizeModerationStatus,
   REVIEW_MODERATION_STATUS,
   deriveModerationStatus,
   isLowConfidenceReview,
@@ -85,6 +86,29 @@ const CATEGORY_OPTIONS = [
   { value: "mechanic", label: "Mecanica" },
 ];
 
+const FALLBACK_PROVIDERS = [
+  {
+    id: "fallback-prov-1",
+    name: "Plomeria Norte",
+    category: "Plomeria",
+    zone: "Buenos Aires",
+    eta: "A 1.5 km",
+    rating: 4.7,
+    jobs: 96,
+    verified: true,
+  },
+  {
+    id: "fallback-prov-2",
+    name: "Limpieza Express",
+    category: "Limpieza",
+    zone: "Buenos Aires",
+    eta: "A 2.1 km",
+    rating: 4.6,
+    jobs: 142,
+    verified: true,
+  },
+];
+
 function humanizeCategory(category) {
   const match = CATEGORY_OPTIONS.find((item) => item.value === category);
   return match?.label ?? category;
@@ -101,6 +125,36 @@ function tagsForRating(rating) {
   if (rating <= 2) return TAGS_BY_RATING.low;
   if (rating === 3) return TAGS_BY_RATING.mid;
   return TAGS_BY_RATING.high;
+}
+
+function formatRelativeDate(value) {
+  if (!value) return "Reciente";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  const diffMs = Date.now() - parsed.getTime();
+  if (diffMs < 36e5) return "Hace menos de 1 hora";
+  if (diffMs < 864e5) return `Hace ${Math.max(1, Math.floor(diffMs / 36e5))} horas`;
+  return `Hace ${Math.max(1, Math.floor(diffMs / 864e5))} días`;
+}
+
+function normalizeReviewForUi(review, selectedProvider) {
+  const riskScore = Number(review?.riskScore);
+  const safeRiskScore = Number.isFinite(riskScore) ? Math.max(0, Math.min(100, Math.round(riskScore))) : 0;
+  const safeStatus = normalizeModerationStatus(review?.status) ?? deriveModerationStatus({ riskScore: safeRiskScore });
+  return {
+    id: review?.id ?? `rev-${Math.random().toString(36).slice(2, 10)}`,
+    author: review?.author ?? "Cliente",
+    provider: review?.provider ?? selectedProvider?.name ?? review?.providerUserId ?? "Prestador",
+    rating: Number.isFinite(Number(review?.rating)) ? Math.max(1, Math.min(5, Math.round(Number(review.rating)))) : 5,
+    verified: review?.verified !== false,
+    service: review?.service ?? "Servicio contratado",
+    createdAt: review?.createdAt && review.createdAt.includes("T") ? formatRelativeDate(review.createdAt) : (review?.createdAt ?? "Reciente"),
+    riskScore: safeRiskScore,
+    status: safeStatus,
+    tags: Array.isArray(review?.tags) ? review.tags : [],
+    comment: review?.comment ?? "",
+    providerResponse: review?.providerResponse ?? "Sin respuesta aún.",
+  };
 }
 
 function StarRow({ value, onToggle, onKeyDown }) {
@@ -448,9 +502,11 @@ export default function MobileReviewFlow() {
         setProviderState("ready");
       } catch (_error) {
         if (!isMounted) return;
-        setProviders([]);
-        setSelectedProviderId("");
-        setProviderState("error");
+        setProviders(FALLBACK_PROVIDERS);
+        setSelectedProviderId((currentId) =>
+          FALLBACK_PROVIDERS.some((provider) => provider.id === currentId) ? currentId : FALLBACK_PROVIDERS[0]?.id ?? "",
+        );
+        setProviderState("ready");
         setProviderError("No pudimos cargar descubrimiento en vivo. Reintentá en unos segundos.");
       }
     }
@@ -467,12 +523,17 @@ export default function MobileReviewFlow() {
     async function loadReviews() {
       setListState("loading");
       setListWarning("");
+      if (!selectedProvider?.id) {
+        setReviews([]);
+        setListState("ready");
+        return;
+      }
       if (!isMounted) return;
       try {
-        const response = await fetchReviews({ serviceId: "srv-8241", filter });
+        const response = await fetchReviews({ providerId: selectedProvider?.id });
         if (!isMounted) return;
         const items = Array.isArray(response?.items) ? response.items : [];
-        setReviews(items);
+        setReviews(items.map((item) => normalizeReviewForUi(item, selectedProvider)));
         setListState("ready");
       } catch (_error) {
         if (!isMounted) return;
@@ -487,7 +548,7 @@ export default function MobileReviewFlow() {
     return () => {
       isMounted = false;
     };
-  }, [filter, reloadNonce]);
+  }, [filter, reloadNonce, selectedProvider?.id]);
 
   useEffect(() => {
     const assignment = getOrCreateReviewExperimentAssignment();
@@ -496,19 +557,19 @@ export default function MobileReviewFlow() {
 
   const helperText =
     rating === 0
-      ? "Elegí estrellas para continuar."
+      ? "Elegí de 1 a 5 estrellas para continuar."
       : rating <= 2
-        ? "Si querés, contanos qué pasó para ayudarte mejor."
+        ? "Si querés, contanos qué pasó. Tu comentario nos ayuda a mejorar."
         : rating === 3
-          ? "¿Qué podríamos mejorar?"
-          : "¡Genial! ¿Qué te gustó más?";
+          ? "¿Qué se podría mejorar?"
+          : "¿Qué te gustó más?";
 
   const trustState = useMemo(() => {
     if (rating === 0) {
       return {
         tone: "neutral",
         title: "Tu reseña fortalece la confianza del marketplace",
-        message: "Cuando califiques, te mostramos si impacta directo en reputación o requiere revisión.",
+        message: "Cuando califiques, te mostramos si se publica de inmediato o si requiere revisión.",
       };
     }
 
@@ -524,14 +585,14 @@ export default function MobileReviewFlow() {
       return {
         tone: "verified",
         title: "Compra verificada con impacto completo",
-        message: "Esta reseña se vincula al servicio contratado y fortalece la reputación pública del prestador.",
+        message: "Esta reseña se vincula al servicio contratado y aporta al perfil público del prestador.",
       };
     }
 
     return {
-      tone: "neutral",
-      title: "Impacto parcial hasta verificar servicio",
-      message: "La reseña queda visible pero con menor peso hasta completar validaciones de confianza.",
+        tone: "neutral",
+        title: "Impacto parcial hasta verificar servicio",
+        message: "La reseña queda visible, pero cuenta menos hasta que se verifique el servicio.",
     };
   }, [rating, selectedProvider?.verified]);
 
@@ -575,8 +636,8 @@ export default function MobileReviewFlow() {
     setIsSubmitting(true);
     try {
       const payload = {
-        serviceId: activeServiceRequestId,
-        providerId: selectedProvider?.id,
+        serviceRequestId: activeServiceRequestId,
+        providerUserId: selectedProvider?.id,
         rating,
         tags: selectedTags,
         comment: comment.trim(),
@@ -629,12 +690,12 @@ export default function MobileReviewFlow() {
       setActiveServiceRequestId(serviceRequestId || "srv-8241");
       setBookingSubmitted(true);
       setBookingState("submitted");
-      setLiveMessage("Solicitud de contratacion enviada");
+      setLiveMessage("Solicitud de contratación enviada.");
     } catch (_error) {
       setBookingState("error");
       setBookingSubmitted(false);
       setBookingError("No pudimos enviar la solicitud. Reintentá en unos segundos.");
-      setLiveMessage("No pudimos enviar la solicitud de contratacion.");
+      setLiveMessage("No pudimos enviar la solicitud de contratación.");
     }
   };
 
@@ -741,8 +802,8 @@ export default function MobileReviewFlow() {
 
         <section className="mvp-block" aria-labelledby="discover-title">
           <div className="section-head">
-            <h2 id="discover-title">Descubri prestadores</h2>
-            <p className="helper-text">Elegi una opcion con reputacion verificada y zona cercana.</p>
+            <h2 id="discover-title">Descubrí prestadores</h2>
+            <p className="helper-text">Elegí una opción con buena reputación y cerca de tu zona.</p>
           </div>
           <div className="booking-grid">
             <label htmlFor="discovery-category">
@@ -774,7 +835,7 @@ export default function MobileReviewFlow() {
               />
             </label>
           </div>
-          {providerState === "error" ? <p className="error-box" role="alert">{providerError}</p> : null}
+          {providerError ? <p className="error-box" role="alert">{providerError}</p> : null}
           {providerState === "loading" ? (
             <div className="skeleton-list" aria-label="Cargando prestadores">
               <div className="skeleton-card" />
@@ -821,8 +882,8 @@ export default function MobileReviewFlow() {
 
         <section className="mvp-block" aria-labelledby="booking-title">
           <div className="section-head">
-            <h2 id="booking-title">Contratacion simple</h2>
-            <p className="helper-text">Reserva en dos pasos y deja trazabilidad para soporte y moderacion.</p>
+            <h2 id="booking-title">Contratación simple</h2>
+            <p className="helper-text">Reservá en dos pasos. Si hay un problema, soporte puede ayudarte mejor.</p>
           </div>
           <form className="booking-form" onSubmit={handleBookingSubmit}>
             <p className="meta-row">
@@ -872,18 +933,18 @@ export default function MobileReviewFlow() {
               />
             </label>
             <button className="submit-button" type="submit" disabled={!canBook || bookingState === "submitting"}>
-              Solicitar contratacion
+              Solicitar contratación
             </button>
             {!canBook ? <p className="field-note">Seleccioná una opción disponible para poder contratar.</p> : null}
             {bookingSubmitted ? (
               <p className="confirm">
-                Solicitud enviada. {selectedProvider?.name || "El prestador"} recibio tu pedido para {requestedDate} a las {requestedTime}.
+                Solicitud enviada. {selectedProvider?.name || "El prestador"} recibió tu pedido para {requestedDate} a las {requestedTime}.
               </p>
             ) : null}
             {bookingState === "error" ? <p className="error-box" role="alert">{bookingError}</p> : null}
             {activeServiceRequestId ? (
               <p className="field-note">
-                Id de solicitud activa: <strong>{activeServiceRequestId}</strong>
+                ID de solicitud activa: <strong>{activeServiceRequestId}</strong>
               </p>
             ) : null}
           </form>
@@ -897,7 +958,7 @@ export default function MobileReviewFlow() {
               Tocá una estrella para calificar. Si querés cambiar, tocá otra.
             </p>
             <p id="rating-instructions" className="sr-only">
-              Usá flechas para ajustar la calificación y tecla 0 para limpiar selección.
+              Usá las flechas para ajustar la calificación y la tecla 0 para limpiar la selección.
             </p>
           </fieldset>
 
@@ -959,9 +1020,9 @@ export default function MobileReviewFlow() {
           <button className="submit-button" type="submit" disabled={!rating || isSubmitting || !canReview}>
             {isSubmitting ? "Enviando..." : "Enviar reseña"}
           </button>
-          {!canReview ? <p className="field-note">Primero completá una contratación válida para habilitar la reseña verificada.</p> : null}
+          {!canReview ? <p className="field-note">Primero completá una contratación para habilitar la reseña verificada.</p> : null}
 
-          {submitted && <p className="confirm">Gracias. Tu reseña fue enviada. Puede pasar por validación antes de impactar el perfil.</p>}
+          {submitted && <p className="confirm">Gracias. Tu reseña fue enviada. Puede pasar por validación antes de publicarse.</p>}
         </form>
 
         <section className="reviews-feed" aria-labelledby="reviews-feed-title">
@@ -1026,7 +1087,7 @@ export default function MobileReviewFlow() {
             </div>
           ) : null}
 
-          {listState === "ready" && filteredReviews.length === 0 && <p className="helper-text">No hay reseñas para este filtro.</p>}
+          {listState === "ready" && filteredReviews.length === 0 && <p className="helper-text">Todavía no hay reseñas para este filtro.</p>}
 
           {listState === "ready" &&
             filteredReviews.map((review) => (
