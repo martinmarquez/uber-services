@@ -195,6 +195,64 @@ test("postgres storage-backed appeal state works across service instances", { sk
   dropSchema(DATABASE_URL, schema);
 });
 
+test("postgres appeal open race across service instances allows only one active appeal", { skip: !hasDatabase }, () => {
+  const schema = `rat8_${Date.now()}_appeal_race`;
+  runPostgresMigrations({ databaseUrl: DATABASE_URL, schema });
+  const repository = new PostgresReviewRepository({ databaseUrl: DATABASE_URL, schema });
+  const serviceA = new ReviewService({ repository });
+  const serviceB = new ReviewService({ repository });
+
+  const serviceRequestId = crypto.randomUUID();
+  const reviewerUserId = crypto.randomUUID();
+  const providerUserId = crypto.randomUUID();
+  seedServiceRequest(repository, { serviceRequestId, reviewerUserId, providerUserId });
+
+  const created = serviceA.createReview({
+    idempotencyKey: "idem-pg-appeal-race-review-1",
+    serviceRequestId,
+    reviewerUserId,
+    providerUserId,
+    rating: 4,
+    serviceCompletedAt: "2026-05-07T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:10:00.000Z",
+  });
+  assert.equal(created.ok, true);
+
+  const first = serviceA.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: reviewerUserId, roles: ["customer"] },
+    note: "First concurrent appeal attempt with enough evidence.",
+    idempotencyKey: "idem-pg-appeal-race-open-1",
+    now: "2026-05-07T01:00:00.000Z",
+  });
+  const second = serviceB.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: reviewerUserId, roles: ["customer"] },
+    note: "Second concurrent appeal attempt with different idempotency key.",
+    idempotencyKey: "idem-pg-appeal-race-open-2",
+    now: "2026-05-07T01:00:01.000Z",
+  });
+
+  const outcomes = [first, second];
+  const successCount = outcomes.filter((result) => result.ok === true).length;
+  const duplicateCount = outcomes.filter((result) => result.ok === false && result.code === "appeal_already_open").length;
+  assert.equal(successCount, 1);
+  assert.equal(duplicateCount, 1);
+
+  const openAppeals = repository.queryJson(`
+    select row_to_json(t) as row
+    from (
+      select count(*)::int as total
+      from review_appeals
+      where review_id = ${lit(created.review.id)}::uuid and status = 'queued'
+    ) t
+  `);
+  assert.equal(Number(openAppeals.total), 1);
+
+  dropSchema(DATABASE_URL, schema);
+});
+
 function dropSchema(databaseUrl, schema) {
   execFileSync("psql", ["-X", "-v", "ON_ERROR_STOP=1", "-d", databaseUrl, "-c", `drop schema if exists "${schema}" cascade`], { stdio: "pipe" });
 }

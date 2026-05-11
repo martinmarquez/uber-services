@@ -164,3 +164,155 @@ test("sqlite repository wiring persists report, moderation tag and provider aggr
 
   fs.rmSync(dbPath, { force: true });
 });
+
+test("sqlite storage-backed appeal state works across service instances", () => {
+  const dbPath = path.join(os.tmpdir(), `rat8-appeal-persist-${Date.now()}.sqlite`);
+  runSqliteMigrations({ dbPath });
+  const repository = new SqliteReviewRepository({ filename: dbPath });
+
+  const serviceA = new ReviewService({ repository, appealReopenCooldownMs: 60 * 60 * 1000 });
+  const created = serviceA.createReview({
+    idempotencyKey: "idem-sqlite-appeal-persist-1",
+    serviceRequestId: "sr-sqlite-appeal-persist-1",
+    reviewerUserId: "u-sqlite-appeal-persist-1",
+    providerUserId: "p-sqlite-appeal-persist-1",
+    rating: 5,
+    serviceCompletedAt: "2026-05-07T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:10:00.000Z",
+  });
+  assert.equal(created.ok, true);
+
+  const opened = serviceA.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: "u-sqlite-appeal-persist-1", roles: ["customer"] },
+    note: "Primera apelacion con evidencia suficiente.",
+    idempotencyKey: "idem-sqlite-appeal-persist-open-1",
+    now: "2026-05-07T01:00:00.000Z",
+  });
+  assert.equal(opened.ok, true);
+
+  const serviceB = new ReviewService({ repository, appealReopenCooldownMs: 60 * 60 * 1000 });
+  const closed = serviceB.closeAppeal({
+    reviewId: created.review.id,
+    actor: { id: "mod-sqlite-appeal-persist-1", roles: ["moderator"] },
+    appealId: opened.appeal.id,
+    resolution: "rejected",
+    idempotencyKey: "idem-sqlite-appeal-persist-close-1",
+    now: "2026-05-07T01:10:00.000Z",
+  });
+  assert.equal(closed.ok, true);
+
+  const deniedDuringCooldown = serviceB.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: "u-sqlite-appeal-persist-1", roles: ["customer"] },
+    note: "Reapertura dentro de ventana de cooldown.",
+    idempotencyKey: "idem-sqlite-appeal-persist-open-2",
+    resume: true,
+    now: "2026-05-07T01:20:00.000Z",
+  });
+  assert.equal(deniedDuringCooldown.ok, false);
+  assert.equal(deniedDuringCooldown.code, "appeal_cooldown_active");
+
+  fs.rmSync(dbPath, { force: true });
+});
+
+test("sqlite-backed appeals persist across service restart for close and cooldown enforcement", () => {
+  const dbPath = path.join(os.tmpdir(), `rat8-appeals-restart-${Date.now()}.sqlite`);
+  runSqliteMigrations({ dbPath });
+  const repository = new SqliteReviewRepository({ filename: dbPath });
+  const firstService = new ReviewService({ repository, appealReopenCooldownMs: 24 * 60 * 60 * 1000 });
+
+  const created = firstService.createReview({
+    idempotencyKey: "idem-sqlite-appeal-restart-1",
+    serviceRequestId: "sr-sqlite-appeal-restart-1",
+    reviewerUserId: "u-sqlite-appeal-restart-1",
+    providerUserId: "p-sqlite-appeal-restart-1",
+    rating: 5,
+    serviceCompletedAt: "2026-05-07T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:10:00.000Z",
+  });
+  assert.equal(created.ok, true);
+
+  const opened = firstService.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: "u-sqlite-appeal-restart-1", roles: ["user"] },
+    note: "Initial appeal evidence from first service instance",
+    idempotencyKey: "idem-sqlite-appeal-restart-open-1",
+    now: "2026-05-07T02:00:00.000Z",
+  });
+  assert.equal(opened.ok, true);
+
+  const restartedService = new ReviewService({ repository, appealReopenCooldownMs: 24 * 60 * 60 * 1000 });
+  const closed = restartedService.closeAppeal({
+    reviewId: created.review.id,
+    actor: { id: "mod-sqlite-appeal-restart-1", roles: ["moderator"] },
+    appealId: opened.appeal.id,
+    resolution: "rejected",
+    idempotencyKey: "idem-sqlite-appeal-restart-close-1",
+    now: "2026-05-07T02:30:00.000Z",
+  });
+  assert.equal(closed.ok, true);
+
+  const blockedByCooldown = restartedService.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: "u-sqlite-appeal-restart-1", roles: ["user"] },
+    note: "Reopen request with resume flag still inside cooldown",
+    resume: true,
+    idempotencyKey: "idem-sqlite-appeal-restart-open-2",
+    now: "2026-05-07T03:00:00.000Z",
+  });
+  assert.equal(blockedByCooldown.ok, false);
+  assert.equal(blockedByCooldown.code, "appeal_cooldown_active");
+
+  fs.rmSync(dbPath, { force: true });
+});
+
+test("sqlite appeal open race across service instances allows only one active appeal", () => {
+  const dbPath = path.join(os.tmpdir(), `rat8-appeal-race-${Date.now()}.sqlite`);
+  runSqliteMigrations({ dbPath });
+  const repository = new SqliteReviewRepository({ filename: dbPath });
+  const serviceA = new ReviewService({ repository });
+  const serviceB = new ReviewService({ repository });
+
+  const created = serviceA.createReview({
+    idempotencyKey: "idem-sqlite-appeal-race-review-1",
+    serviceRequestId: "sr-sqlite-appeal-race-1",
+    reviewerUserId: "u-sqlite-appeal-race-1",
+    providerUserId: "p-sqlite-appeal-race-1",
+    rating: 4,
+    serviceCompletedAt: "2026-05-07T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:10:00.000Z",
+  });
+  assert.equal(created.ok, true);
+
+  const first = serviceA.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: "u-sqlite-appeal-race-1", roles: ["customer"] },
+    note: "First concurrent appeal attempt with enough evidence.",
+    idempotencyKey: "idem-sqlite-appeal-race-open-1",
+    now: "2026-05-07T01:00:00.000Z",
+  });
+  const second = serviceB.openAppeal({
+    reviewId: created.review.id,
+    actor: { id: "u-sqlite-appeal-race-1", roles: ["customer"] },
+    note: "Second concurrent appeal attempt with different idempotency key.",
+    idempotencyKey: "idem-sqlite-appeal-race-open-2",
+    now: "2026-05-07T01:00:01.000Z",
+  });
+
+  const outcomes = [first, second];
+  const successCount = outcomes.filter((result) => result.ok === true).length;
+  const duplicateCount = outcomes.filter((result) => result.ok === false && result.code === "appeal_already_open").length;
+  assert.equal(successCount, 1);
+  assert.equal(duplicateCount, 1);
+
+  const openAppeals = repository.db.prepare(
+    "select count(*) as total from review_appeals where review_id = ? and status = 'queued'",
+  ).get(created.review.id);
+  assert.equal(Number(openAppeals.total), 1);
+
+  fs.rmSync(dbPath, { force: true });
+});
