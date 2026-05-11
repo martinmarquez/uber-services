@@ -26,3 +26,8 @@ Result:
 
 ## Closure Decision
 RAT-131 satisfies its implementation objective and has no active blocker. Keep in `done` with `9d16240` as closure reference.
+
+## Status Hygiene Note (RAT-556)
+- 2026-05-11: issue state was corrected to `todo` by automation due to missing active run handle, not due to a delivery regression.
+- Implementation/test evidence remains valid in commits `9d16240` and `b152e97`.
+- On resume checkout, status should return to `done` unless new scope is explicitly added.
