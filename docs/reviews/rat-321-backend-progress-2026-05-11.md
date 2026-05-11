@@ -29,3 +29,16 @@
 
 ## Next action
 - Add Postgres-backed integration assertions for persisted `review_tags` + `review_aggregates` + `review_reports` through `ReviewService` flows (not direct SQL), keeping parity with current SQLite wiring tests.
+
+## Resume note (state correction sweep)
+- Referenced comment `8b2a15dd-f8a2-4fb5-aa8c-0662cd427b2b`: prior run-handle drift moved issue to `todo` in sweep `RAT-556`.
+- Current heartbeat resumed with active harness checkout and produced concrete commit `72384ae`.
+
+## Additional verification in this heartbeat
+- Command:
+  - `node --test server/tests/postgresIntegration.test.js`
+- Result:
+  - Test file executes cleanly; tests are skipped when `DATABASE_URL` is unset.
+
+## Updated next action
+- Execute the same Postgres integration suite with runtime `DATABASE_URL` to produce non-skipped evidence for appeal/report/tag/aggregate persistence parity.
