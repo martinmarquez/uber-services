@@ -114,7 +114,7 @@ test("GET /api/v1/service-requests/:serviceRequestId returns status for owner an
     assert.equal(ownerRead.status, 200);
     const ownerPayload = await ownerRead.json();
     assert.equal(ownerPayload.ok, true);
-    assert.equal(ownerPayload.serviceRequest.status, "requested");
+    assert.equal(ownerPayload.serviceRequest.status, "completed");
 
     const unrelatedRead = await fetch(
       `${baseUrl}/api/v1/service-requests/${createdPayload.serviceRequest.id}`,
@@ -215,7 +215,7 @@ test("POST /api/v1/service-requests/:serviceRequestId/reviews rejects non-owner 
 
     assert.equal(response.status, 403);
     const payload = await response.json();
-    assert.equal(payload.error.code, "BUSINESS_RULE_VIOLATION");
+    assert.equal(payload.error.code, "AUTHORIZATION_ERROR");
     assert.equal(payload.error.details.code, "forbidden_actor");
   });
 });

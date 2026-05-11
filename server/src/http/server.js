@@ -144,11 +144,11 @@ async function handleRequest(req, res, deps) {
       idempotencyKey: body.idempotencyKey,
       serviceRequestId: route.params.serviceRequestId,
       reviewerUserId: actor?.id,
-      reviewerMatchesParticipant: true,
-      providerUserId: body.providerUserId,
+      reviewerMatchesParticipant: ownershipCheck.request.customerUserId === actor?.id,
+      providerUserId: ownershipCheck.request.providerUserId,
       rating: body.rating,
       comment: body.comment,
-      serviceCompletedAt: body.serviceCompletedAt,
+      serviceCompletedAt: ownershipCheck.request.completedAt,
       now: body.now,
       correlationId: body.correlationId,
     });
@@ -181,11 +181,11 @@ async function handleRequest(req, res, deps) {
       idempotencyKey: body.idempotencyKey,
       serviceRequestId,
       reviewerUserId: actor?.id,
-      reviewerMatchesParticipant: true,
-      providerUserId,
+      reviewerMatchesParticipant: ownershipCheck.request.customerUserId === actor?.id,
+      providerUserId: ownershipCheck.request.providerUserId,
       rating: body.rating,
       comment: body.comment,
-      serviceCompletedAt: body.serviceCompletedAt,
+      serviceCompletedAt: ownershipCheck.request.completedAt,
       now: body.now,
       correlationId: body.correlationId,
     });
@@ -357,30 +357,36 @@ function statusForAppealFailure(code) {
 }
 
 function assertReviewOwnership({ discoveryBookingService, actor, serviceRequestId, providerUserId }) {
-  const status = discoveryBookingService.getServiceRequestStatus({ serviceRequestId, actor });
-  if (!status.ok) {
-    const httpStatus = status.code === "not_found" ? 404 : 403;
+  const request = discoveryBookingService.getServiceRequestById(serviceRequestId);
+  if (!request) {
     return {
-      status: httpStatus,
-      error: errorPayload("BUSINESS_RULE_VIOLATION", "Review ownership check failed", { code: status.code }),
+      status: 404,
+      error: errorPayload("BUSINESS_RULE_VIOLATION", "Review ownership check failed", { code: "not_found" }),
     };
   }
 
-  if (status.serviceRequest.customerUserId !== actor?.id) {
+  if (!actor?.id || request.customerUserId !== actor.id) {
     return {
       status: 403,
       error: errorPayload("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", { code: "forbidden_actor" }),
     };
   }
 
-  if (status.serviceRequest.providerUserId !== providerUserId) {
+  if (request.status !== "completed" || !request.completedAt) {
+    return {
+      status: 409,
+      error: errorPayload("BUSINESS_RULE_VIOLATION", "Review ownership check failed", { code: "service_not_completed" }),
+    };
+  }
+
+  if (providerUserId && request.providerUserId !== providerUserId) {
     return {
       status: 409,
       error: errorPayload("BUSINESS_RULE_VIOLATION", "Review ownership check failed", { code: "provider_mismatch" }),
     };
   }
 
-  return { status: 200, error: null };
+  return { status: 200, error: null, request };
 }
 
 function matchPath(pattern, actual) {

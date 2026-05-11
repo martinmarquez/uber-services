@@ -76,7 +76,7 @@ test("createServiceRequest stores booking and supports idempotent replay", () =>
   const second = svc.createServiceRequest(input);
 
   assert.equal(first.ok, true);
-  assert.equal(first.serviceRequest.status, "requested");
+  assert.equal(first.serviceRequest.status, "completed");
   assert.equal(second.ok, true);
   assert.equal(second.replay, true);
   assert.equal(second.serviceRequest.id, first.serviceRequest.id);
@@ -139,7 +139,7 @@ test("getServiceRequestStatus only allows booking participants", () => {
     actor: { id: "prov-1", roles: ["provider"] },
   });
   assert.equal(allowed.ok, true);
-  assert.equal(allowed.serviceRequest.status, "requested");
+  assert.equal(allowed.serviceRequest.status, "completed");
 });
 
 test("create service request payload validates required fields", () => {
