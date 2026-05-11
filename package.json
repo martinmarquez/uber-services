@@ -7,7 +7,15 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --host",
-    "test": "vitest run src/components/MobileReviewFlow.test.jsx"
+    "test": "vitest run src/components/MobileReviewFlow.test.jsx",
+    "test:server": "node --test server/tests/*.test.js",
+    "test:all": "npm run test && npm run test:server",
+    "server:start": "node server/src/http/startServer.js",
+    "db:migrate:sqlite": "node server/src/db/runSqliteMigrations.js server/.data/reviews-dev.sqlite",
+    "db:migrate:postgres": "node server/src/db/runPostgresMigrations.js \"$DATABASE_URL\" \"${PG_SCHEMA:-public}\"",
+    "db:local:postgres:up": "docker run --name uber-services-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=uber-services -p 5432:5432 -d postgres:16",
+    "db:local:postgres:down": "docker rm -f uber-services-pg",
+    "smoke:local": "./tools/smoke/local-availability-smoke.sh"
   },
   "dependencies": {
     "react": "^18.3.1",
