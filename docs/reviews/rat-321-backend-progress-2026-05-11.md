@@ -58,3 +58,16 @@
 
 2. UUID compatibility bug for lifecycle entity IDs in Postgres-backed flows:
 - Updated `randomId()` to emit UUIDs for `rep`, `apl`, and `resp` entities (in addition to `rev` and `evt`).
+
+## Full backend bundle evidence with real DATABASE_URL
+- Executed full backend server test bundle against Docker-backed Postgres runtime.
+- Runtime DB:
+  - `postgres://postgres:postgres@127.0.0.1:55432/rat321`
+- Command:
+  - `DATABASE_URL='postgres://postgres:postgres@127.0.0.1:55432/rat321' node --test server/tests/*.test.js`
+- Result:
+  - `82` tests passed
+  - `0` failed
+  - `0` skipped
+
+This completes parity evidence beyond `postgresIntegration.test.js` and satisfies the liveness continuation instruction.
