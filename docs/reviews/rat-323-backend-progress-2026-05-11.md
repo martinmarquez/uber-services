@@ -1,0 +1,45 @@
+# RAT-323 Backend Progress - 2026-05-11
+
+Estado: in_progress
+Owner: Back-End
+
+## Resumen del heartbeat
+
+Se completó alineación de contrato HTTP para endpoints lifecycle de reviews (v1), con foco en semántica de errores y seguridad de acceso:
+
+- `POST /api/v1/reviews/:reviewId/reports`
+  - `401` cuando actor no autenticado.
+  - `404` cuando review no existe.
+  - `400` para payload inválido.
+- `POST /api/v1/reviews/:reviewId/response`
+  - `403` para actor no target (`not_review_target`) o review no respondable.
+  - `400` para mensaje inválido.
+- `POST /api/v1/reviews/:reviewId/appeals`
+  - `401` cuando actor no autenticado.
+  - `403` para `forbidden_actor`.
+  - `400` para nota/idempotency inválidas.
+- Moderation lifecycle:
+  - transiciones inválidas responden `409 INVALID_STATE_TRANSITION`.
+
+## Evidencia técnica
+
+- Commit: `d90e73a`
+- Archivos:
+  - `server/src/http/server.js`
+  - `server/tests/httpServer.test.js`
+- Verificación:
+  - `node --test server/tests/httpServer.test.js` (pass)
+  - `node --test server/tests/reviewService.test.js server/tests/routes.test.js server/tests/reviewRules.test.js` (pass)
+
+## Coordinación FE/BE (contrato)
+
+Contrato v1 ratificado para FE:
+- Error envelope estable con `error.code` + `error.details.code`.
+- Semántica de status para auth/validation/conflict ya consistente en lifecycle endpoints.
+- Sin breaking changes de payload en respuestas exitosas.
+
+## Próxima acción
+
+Implementar y validar criterio de aceptación pendiente sobre migraciones reversibles:
+1. Definir estrategia `down` para migraciones lifecycle (`review_reports`, `review_tags`, `review_aggregates`, `review_responses`, `review_appeals`) en SQLite/Postgres.
+2. Agregar test de rollback/reapply mínimo para asegurar reversibilidad sin drift de esquema.
