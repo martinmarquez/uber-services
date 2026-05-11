@@ -87,6 +87,7 @@ export class ReviewService {
       updatedAt: input.now ?? new Date().toISOString(),
     };
     this.persistReview(review);
+    this.recomputeProviderAggregate(review.providerUserId);
     const scoreInputs = buildScoreInputs({
       rating: review.rating,
       serviceCompletedAt: input.serviceCompletedAt,
@@ -112,6 +113,7 @@ export class ReviewService {
           riskScore: review.riskScore,
           velocityCount: scoreInputs.velocityCount,
           velocityLimit: this.velocityMaxPerWindow,
+          sourceAvailability: input.sourceAvailability,
           thresholdVersion: this.thresholdVersion,
         }),
       },
@@ -135,6 +137,15 @@ export class ReviewService {
 
     review.status = input.toStatus;
     review.updatedAt = input.now ?? new Date().toISOString();
+    this.recomputeProviderAggregate(review.providerUserId);
+    if (input.decision?.reasonCode && input.toStatus !== "verificada") {
+      this.persistReviewTag({
+        reviewId: review.id,
+        tag: normalizeTag(input.decision.reasonCode),
+        source: "moderator",
+        createdAt: review.updatedAt,
+      });
+    }
 
     this.emitEvent({
       reviewId: review.id,
@@ -158,6 +169,7 @@ export class ReviewService {
           velocityCount: this.currentVelocityCount(review.reviewerUserId),
           velocityLimit: this.velocityMaxPerWindow,
           reasonCode: input.decision.reasonCode,
+          sourceAvailability: input.decision?.sourceAvailability ?? input.sourceAvailability,
           thresholdVersion: this.thresholdVersion,
         }),
       },
@@ -231,6 +243,8 @@ export class ReviewService {
 
   closeAppeal(input) {
     if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
+    const replay = this.getIdempotent(input.idempotencyKey);
+    if (replay) return { replay: true, ...replay };
     const review = this.getReviewById(input.reviewId);
     if (!review) return { ok: false, code: "not_found" };
     if (!canModerate(input?.actor)) return { ok: false, code: "forbidden_actor" };
@@ -290,6 +304,7 @@ export class ReviewService {
     });
 
     this.persistReviewUpdate(review);
+    this.recomputeProviderAggregate(review.providerUserId);
     return { ok: true, review };
   }
 
@@ -309,8 +324,15 @@ export class ReviewService {
       reasonCode: input.reasonCode,
       description: input.description ?? null,
       status: "queued",
+      idempotencyKey: input.idempotencyKey,
       createdAt: input.now ?? new Date().toISOString(),
     };
+    try {
+      this.persistReport(report);
+    } catch (error) {
+      if (isReportIdempotencyConflict(error)) return { ok: false, code: "idempotency_key_conflict" };
+      throw error;
+    }
 
     this.emitEvent({
       reviewId: review.id,
@@ -335,12 +357,14 @@ export class ReviewService {
           velocityCount: this.currentVelocityCount(review.reviewerUserId),
           velocityLimit: this.velocityMaxPerWindow,
           reasonCode: report.reasonCode,
+          sourceAvailability: input.sourceAvailability,
           thresholdVersion: this.thresholdVersion,
         }),
       },
     });
 
     this.persistReviewUpdate(review);
+    this.recomputeProviderAggregate(review.providerUserId);
     return { ok: true, report, review };
   }
 
@@ -376,6 +400,7 @@ export class ReviewService {
           updatedAt: now,
         };
     this.responses.set(review.id, response);
+    this.persistResponse(response);
 
     this.emitEvent({
       reviewId: review.id,
@@ -486,6 +511,7 @@ export class ReviewService {
   }
 
   persistAppeal(appeal) {
+    if (this.repository?.upsertAppeal) this.repository.upsertAppeal(appeal);
     this.appeals.set(appeal.id, appeal);
     const ids = this.appealIdsByReview.get(appeal.reviewId) ?? [];
     if (!ids.includes(appeal.id)) ids.push(appeal.id);
@@ -493,6 +519,10 @@ export class ReviewService {
   }
 
   findOpenAppealByReviewId(reviewId) {
+    if (this.repository?.listAppealsByReviewId) {
+      const appeals = this.repository.listAppealsByReviewId(reviewId);
+      return appeals.find((appeal) => appeal.status === "open") ?? null;
+    }
     const ids = this.appealIdsByReview.get(reviewId) ?? [];
     for (const id of ids) {
       const appeal = this.appeals.get(id);
@@ -502,6 +532,12 @@ export class ReviewService {
   }
 
   findLatestClosedAppealByReviewId(reviewId) {
+    if (this.repository?.listAppealsByReviewId) {
+      const appeals = this.repository.listAppealsByReviewId(reviewId).filter((appeal) => appeal.closedAt);
+      if (appeals.length === 0) return null;
+      appeals.sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
+      return appeals[0];
+    }
     const ids = this.appealIdsByReview.get(reviewId) ?? [];
     let latest = null;
     for (const id of ids) {
@@ -519,6 +555,22 @@ export class ReviewService {
     const nowMs = new Date(now ?? Date.now()).getTime();
     if (Number.isNaN(closedAtMs) || Number.isNaN(nowMs)) return false;
     return nowMs - closedAtMs < this.appealReopenCooldownMs;
+  }
+
+  persistReport(report) {
+    if (this.repository?.createReviewReport) this.repository.createReviewReport(report);
+  }
+
+  persistResponse(response) {
+    if (this.repository?.upsertReviewResponse) this.repository.upsertReviewResponse(response);
+  }
+
+  recomputeProviderAggregate(providerUserId) {
+    if (this.repository?.recomputeProviderAggregate) this.repository.recomputeProviderAggregate(providerUserId);
+  }
+
+  persistReviewTag(tag) {
+    if (this.repository?.upsertReviewTag) this.repository.upsertReviewTag(tag);
   }
 }
 
@@ -569,19 +621,32 @@ function buildFraudHeuristics({
   velocityCount,
   velocityLimit,
   reasonCode = null,
+  sourceAvailability = null,
   thresholdVersion = DEFAULT_THRESHOLD_VERSION,
 }) {
   return {
     thresholdVersion,
     riskBand: toRiskBand(riskScore),
     velocityBand: toVelocityBand(velocityCount, velocityLimit),
-    s6Telemetry: buildS6Telemetry({ reasonCode }),
+    s6Telemetry: buildS6Telemetry({ reasonCode, sourceAvailability }),
     flaggedByReasonCode: isFraudReason(reasonCode),
     reasonCode: reasonCode ?? null,
   };
 }
 
-function buildS6Telemetry({ reasonCode }) {
+function buildS6Telemetry({ reasonCode, sourceAvailability }) {
+  const upstream = normalizeSourceAvailability(sourceAvailability);
+  if (upstream) {
+    const sourcesExpected = upstream.sourcesExpected;
+    const sourcesPresent = clamp(upstream.sourcesPresent, 0, sourcesExpected);
+    return {
+      sourcesExpected,
+      sourcesPresent,
+      completenessRatio: sourcesExpected > 0 ? round4(sourcesPresent / sourcesExpected) : 0,
+      status: sourcesExpected > 0 && sourcesPresent === sourcesExpected ? "complete" : "partial",
+    };
+  }
+
   const hasReasonCode = typeof reasonCode === "string" && reasonCode.trim().length > 0;
   const sourcesPresent = hasReasonCode ? 1 : 0;
   const sourcesExpected = 3;
@@ -590,6 +655,20 @@ function buildS6Telemetry({ reasonCode }) {
     sourcesPresent,
     completenessRatio: round4(sourcesPresent / sourcesExpected),
     status: sourcesPresent === sourcesExpected ? "complete" : "partial",
+  };
+}
+
+function normalizeSourceAvailability(input) {
+  if (!input || typeof input !== "object") return null;
+  const expectedRaw = input.sourcesExpected ?? input.expected ?? input.total ?? input.upstreamSourcesExpected;
+  const presentRaw = input.sourcesPresent ?? input.present ?? input.available ?? input.upstreamSourcesPresent;
+  const sourcesExpected = Number(expectedRaw);
+  const sourcesPresent = Number(presentRaw);
+  if (!Number.isFinite(sourcesExpected) || !Number.isFinite(sourcesPresent)) return null;
+  if (sourcesExpected <= 0 || sourcesPresent < 0) return null;
+  return {
+    sourcesExpected: Math.floor(sourcesExpected),
+    sourcesPresent: Math.floor(sourcesPresent),
   };
 }
 
@@ -640,4 +719,13 @@ function round8(value) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function isReportIdempotencyConflict(error) {
+  const message = String(error?.message ?? "");
+  return /idempotency_key/i.test(message) && /unique|constraint/i.test(message);
+}
+
+function normalizeTag(value) {
+  return String(value).trim().toLowerCase().replace(/[^a-z0-9_:-]/g, "_").slice(0, 40);
 }

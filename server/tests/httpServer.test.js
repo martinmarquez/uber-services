@@ -671,6 +671,68 @@ test("POST /api/v1/reviews/:reviewId/reports requires authenticated actor", asyn
   });
 });
 
+test("POST /api/v1/reviews/:reviewId/moderation returns INVALID_STATE_TRANSITION on invalid lifecycle move", async () => {
+  await withServer(async (baseUrl) => {
+    const booking = await fetch(`${baseUrl}/api/v1/service-requests`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_mod_state_owner",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-book-mod-state-1",
+        providerUserId: "prov-1",
+        category: "cleaning",
+        city: "Buenos Aires",
+        notes: "Limpieza general hogar",
+        scheduledAt: "2026-05-08T11:00:00.000Z",
+      }),
+    });
+    const bookingPayload = await booking.json();
+
+    const create = await fetch(`${baseUrl}/api/v1/service-requests/${bookingPayload.serviceRequest.id}/reviews`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "usr_mod_state_owner",
+        "x-actor-roles": "customer",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-review-mod-state-1",
+        providerUserId: "prov-1",
+        rating: 4,
+        serviceCompletedAt: "2026-05-07T10:00:00.000Z",
+        now: "2026-05-07T11:00:00.000Z",
+      }),
+    });
+    const created = await create.json();
+
+    const response = await fetch(`${baseUrl}/api/v1/reviews/${created.review.id}/moderation`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-actor-id": "mod-state-1",
+        "x-actor-roles": "moderator",
+      },
+      body: JSON.stringify({
+        idempotencyKey: "idem-mod-state-1",
+        toStatus: "removida",
+        decision: {
+          reasonCode: "fraud_signal",
+          severity: "SEV-2",
+          decisionNote: "Direct remove is invalid from verificada",
+        },
+      }),
+    });
+
+    assert.equal(response.status, 409);
+    const payload = await response.json();
+    assert.equal(payload.error.code, "INVALID_STATE_TRANSITION");
+    assert.equal(payload.error.details.code, "forbidden_transition");
+  });
+});
+
 test("signed actor mode rejects unsigned actor headers", async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/v1/service-requests`, {

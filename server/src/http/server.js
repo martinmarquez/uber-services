@@ -236,7 +236,9 @@ async function handleRequest(req, res, deps) {
       correlationId: body.correlationId,
     });
     if (!result.ok) {
-      return sendJson(res, statusForReportFailure(result.code), errorPayload("BUSINESS_RULE_VIOLATION", "Review report rejected", { code: result.code }));
+      const status = statusForReportFailure(result.code);
+      const code = result.code === "idempotency_key_conflict" ? "CONFLICT" : "BUSINESS_RULE_VIOLATION";
+      return sendJson(res, status, errorPayload(code, "Review report rejected", { code: result.code }));
     }
     return sendJson(res, 202, { ok: true, report: result.report, status: result.review.status });
   }
@@ -286,6 +288,9 @@ async function handleRequest(req, res, deps) {
     });
 
     if (!result.ok) {
+      if (result.code === "forbidden_transition") {
+        return sendJson(res, 409, errorPayload("INVALID_STATE_TRANSITION", "Review moderation rejected", { code: result.code }));
+      }
       return sendJson(res, result.code === "not_found" ? 404 : 409, errorPayload("BUSINESS_RULE_VIOLATION", "Review moderation rejected", { code: result.code }));
     }
 

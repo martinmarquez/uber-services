@@ -107,3 +107,60 @@ test("sqlite lifecycle migration enforces report idempotency and aggregate const
 
   fs.rmSync(dbPath, { force: true });
 });
+
+test("sqlite repository wiring persists report, moderation tag and provider aggregate", () => {
+  const dbPath = path.join(os.tmpdir(), `rat8-wiring-${Date.now()}.sqlite`);
+  runSqliteMigrations({ dbPath });
+  const repository = new SqliteReviewRepository({ filename: dbPath });
+  const service = new ReviewService({ repository });
+  const created = service.createReview({
+    idempotencyKey: "idem-sqlite-4",
+    serviceRequestId: "sr-sqlite-4",
+    reviewerUserId: "u-sqlite-4",
+    providerUserId: "p-sqlite-4",
+    rating: 5,
+    comment: "Persistence wiring test",
+    serviceCompletedAt: "2026-05-07T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:10:00.000Z",
+  });
+  assert.equal(created.ok, true);
+
+  const reportResult = service.reportReview({
+    idempotencyKey: "idem-report-sqlite-4",
+    reviewId: created.review.id,
+    reasonCode: "fraud_signal",
+    actor: { id: "u-reporter-4", roles: ["customer"] },
+    now: "2026-05-07T00:11:00.000Z",
+  });
+  assert.equal(reportResult.ok, true);
+
+  const moderationResult = service.transitionModeration({
+    idempotencyKey: "idem-moderation-sqlite-4",
+    reviewId: created.review.id,
+    toStatus: "no_recomendada",
+    actor: { id: "mod-4", roles: ["moderator"] },
+    decision: {
+      reasonCode: "risk_high",
+      severity: "SEV-2",
+      decisionNote: "Risky pattern",
+    },
+    now: "2026-05-07T00:12:00.000Z",
+  });
+  assert.equal(moderationResult.ok, true);
+
+  const aggregateRow = repository.db.prepare("select * from review_aggregates where provider_user_id = ?").get("p-sqlite-4");
+  assert.equal(aggregateRow.total_reviews, 0);
+  assert.equal(aggregateRow.rating_sum, 0);
+  assert.equal(aggregateRow.average_rating, 0);
+
+  const tagRow = repository.db.prepare("select * from review_tags where review_id = ? and tag = ?").get(created.review.id, "risk_high");
+  assert.ok(tagRow);
+  assert.equal(tagRow.source, "moderator");
+
+  const reportRow = repository.db.prepare("select * from review_reports where id = ?").get(reportResult.report.id);
+  assert.ok(reportRow);
+  assert.equal(reportRow.idempotency_key, "idem-report-sqlite-4");
+
+  fs.rmSync(dbPath, { force: true });
+});

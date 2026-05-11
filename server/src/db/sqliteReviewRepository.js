@@ -52,6 +52,120 @@ export class SqliteReviewRepository {
     `).run(review.rating, review.comment, review.status, review.updatedAt, review.id);
   }
 
+  createReviewReport(report) {
+    this.db.prepare(`
+      insert into review_reports (
+        id, review_id, reporter_user_id, reason_code, description, status, idempotency_key, created_at, resolved_at
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      report.id,
+      report.reviewId,
+      report.reporterUserId,
+      report.reasonCode,
+      report.description,
+      report.status,
+      report.idempotencyKey,
+      report.createdAt,
+      report.resolvedAt ?? null,
+    );
+  }
+
+  upsertReviewResponse(response) {
+    this.db.prepare(`
+      insert into review_responses (
+        id, review_id, responder_user_id, message, status, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?)
+      on conflict(review_id) do update set
+        message = excluded.message,
+        status = excluded.status,
+        updated_at = excluded.updated_at
+    `).run(
+      response.id,
+      response.reviewId,
+      response.responderUserId,
+      response.message,
+      response.status,
+      response.createdAt,
+      response.updatedAt,
+    );
+  }
+
+  upsertAppeal(appeal) {
+    this.db.prepare(`
+      insert into review_appeals (
+        id, review_id, appellant_user_id, note, status, created_at, resolved_at
+      ) values (?, ?, ?, ?, ?, ?, ?)
+      on conflict(id) do update set
+        note = excluded.note,
+        status = excluded.status,
+        resolved_at = excluded.resolved_at
+    `).run(
+      appeal.id,
+      appeal.reviewId,
+      appeal.actorId,
+      appeal.note,
+      toAppealStatus(appeal.status),
+      appeal.createdAt,
+      appeal.closedAt ?? null,
+    );
+  }
+
+  listAppealsByReviewId(reviewId) {
+    const rows = this.db.prepare(`
+      select *
+      from review_appeals
+      where review_id = ?
+      order by created_at asc
+    `).all(reviewId);
+    return rows.map((row) => ({
+      id: row.id,
+      reviewId: row.review_id,
+      actorId: row.appellant_user_id,
+      note: row.note,
+      status: fromAppealStatus(row.status),
+      createdAt: row.created_at,
+      closedAt: row.resolved_at ?? null,
+      resolution: row.status === "resolved" ? "accepted" : row.status === "rejected" ? "rejected" : undefined,
+    }));
+  }
+
+  upsertReviewTag({ reviewId, tag, source = "moderator", createdAt }) {
+    this.db.prepare(`
+      insert into review_tags (review_id, tag, source, created_at)
+      values (?, ?, ?, ?)
+      on conflict(review_id, tag) do update set source = excluded.source
+    `).run(reviewId, tag, source, createdAt ?? new Date().toISOString());
+  }
+
+  recomputeProviderAggregate(providerUserId) {
+    const row = this.db.prepare(`
+      select
+        count(*) as total_reviews,
+        coalesce(sum(rating), 0) as rating_sum,
+        coalesce(avg(rating), 0) as avg_rating,
+        max(created_at) as last_review_at
+      from reviews
+      where provider_user_id = ? and status = 'verificada'
+    `).get(providerUserId);
+    const totalReviews = Number(row?.total_reviews ?? 0);
+    const ratingSum = Number(row?.rating_sum ?? 0);
+    const averageRating = Number((Number(row?.avg_rating ?? 0)).toFixed(2));
+    const lastReviewAt = row?.last_review_at ?? null;
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      insert into review_aggregates (
+        provider_user_id, total_reviews, rating_sum, average_rating, last_review_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?)
+      on conflict(provider_user_id) do update set
+        total_reviews = excluded.total_reviews,
+        rating_sum = excluded.rating_sum,
+        average_rating = excluded.average_rating,
+        last_review_at = excluded.last_review_at,
+        updated_at = excluded.updated_at
+    `).run(providerUserId, totalReviews, ratingSum, averageRating, lastReviewAt, now);
+  }
+
   listProviderReviews(providerUserId, limit) {
     const rows = this.db.prepare(`
       select * from reviews
@@ -136,4 +250,14 @@ function mapReviewRow(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function toAppealStatus(status) {
+  if (status === "closed") return "resolved";
+  return "queued";
+}
+
+function fromAppealStatus(status) {
+  if (status === "resolved" || status === "rejected") return "closed";
+  return "open";
 }

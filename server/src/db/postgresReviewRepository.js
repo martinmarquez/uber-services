@@ -72,6 +72,131 @@ export class PostgresReviewRepository {
     `);
   }
 
+  createReviewReport(report) {
+    this.exec(`
+      insert into review_reports (
+        id, review_id, reporter_user_id, reason_code, description, status, idempotency_key, created_at, resolved_at
+      ) values (
+        ${lit(report.id)}::uuid,
+        ${lit(report.reviewId)}::uuid,
+        ${lit(report.reporterUserId)}::uuid,
+        ${lit(report.reasonCode)},
+        ${nullable(report.description)},
+        ${lit(report.status)},
+        ${lit(report.idempotencyKey)},
+        ${lit(report.createdAt)}::timestamptz,
+        ${nullable(report.resolvedAt)}::timestamptz
+      )
+    `);
+  }
+
+  upsertReviewResponse(response) {
+    this.exec(`
+      insert into review_responses (
+        id, review_id, responder_user_id, message, status, created_at, updated_at
+      ) values (
+        ${lit(response.id)}::uuid,
+        ${lit(response.reviewId)}::uuid,
+        ${lit(response.responderUserId)}::uuid,
+        ${lit(response.message)},
+        ${lit(response.status)},
+        ${lit(response.createdAt)}::timestamptz,
+        ${lit(response.updatedAt)}::timestamptz
+      )
+      on conflict (review_id) do update set
+        message = excluded.message,
+        status = excluded.status,
+        updated_at = excluded.updated_at
+    `);
+  }
+
+  upsertAppeal(appeal) {
+    this.exec(`
+      insert into review_appeals (
+        id, review_id, appellant_user_id, note, status, created_at, resolved_at
+      ) values (
+        ${lit(appeal.id)}::uuid,
+        ${lit(appeal.reviewId)}::uuid,
+        ${lit(appeal.actorId)},
+        ${lit(appeal.note)},
+        ${lit(toAppealStatus(appeal.status))},
+        ${lit(appeal.createdAt)}::timestamptz,
+        ${nullable(appeal.closedAt)}::timestamptz
+      )
+      on conflict (id) do update set
+        note = excluded.note,
+        status = excluded.status,
+        resolved_at = excluded.resolved_at
+    `);
+  }
+
+  listAppealsByReviewId(reviewId) {
+    return this.queryJsonArray(`
+      select row_to_json(t) as row
+      from (
+        select
+          id::text as id,
+          review_id::text as "reviewId",
+          appellant_user_id as "actorId",
+          note,
+          status,
+          created_at::text as "createdAt",
+          resolved_at::text as "closedAt"
+        from review_appeals
+        where review_id = ${lit(reviewId)}::uuid
+        order by created_at asc
+      ) t
+    `).map((row) => ({
+      ...row,
+      status: fromAppealStatus(row.status),
+      resolution: row.status === "resolved" ? "accepted" : row.status === "rejected" ? "rejected" : undefined,
+    }));
+  }
+
+  upsertReviewTag({ reviewId, tag, source = "moderator", createdAt }) {
+    this.exec(`
+      insert into review_tags (review_id, tag, source, created_at)
+      values (
+        ${lit(reviewId)}::uuid,
+        ${lit(tag)},
+        ${lit(source)},
+        ${lit(createdAt ?? new Date().toISOString())}::timestamptz
+      )
+      on conflict (review_id, tag) do update set source = excluded.source
+    `);
+  }
+
+  recomputeProviderAggregate(providerUserId) {
+    this.exec(`
+      with summary as (
+        select
+          count(*)::integer as total_reviews,
+          coalesce(sum(rating), 0)::integer as rating_sum,
+          coalesce(avg(rating), 0)::numeric(3,2) as average_rating,
+          max(created_at) as last_review_at
+        from reviews
+        where provider_user_id = ${lit(providerUserId)}::uuid and status = 'verificada'::review_status
+      )
+      insert into review_aggregates (
+        provider_user_id, total_reviews, rating_sum, average_rating, last_review_at, updated_at
+      )
+      select
+        ${lit(providerUserId)}::uuid,
+        summary.total_reviews,
+        summary.rating_sum,
+        summary.average_rating,
+        summary.last_review_at,
+        now()
+      from summary
+      on conflict (provider_user_id) do update set
+        total_reviews = excluded.total_reviews,
+        rating_sum = excluded.rating_sum,
+        average_rating = excluded.average_rating,
+        last_review_at = excluded.last_review_at,
+        updated_at = excluded.updated_at
+    `);
+  }
+
   listProviderReviews(providerUserId, limit) {
     return this.queryJsonArray(`
       select row_to_json(t) as row
@@ -209,4 +334,14 @@ function num(value) {
 function nullable(value) {
   if (value === null || value === undefined) return "null";
   return lit(value);
+}
+
+function toAppealStatus(status) {
+  if (status === "closed") return "resolved";
+  return "queued";
+}
+
+function fromAppealStatus(status) {
+  if (status === "resolved" || status === "rejected") return "closed";
+  return "open";
 }
