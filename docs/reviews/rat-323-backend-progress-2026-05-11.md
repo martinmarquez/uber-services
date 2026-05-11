@@ -43,3 +43,26 @@ Contrato v1 ratificado para FE:
 Implementar y validar criterio de aceptación pendiente sobre migraciones reversibles:
 1. Definir estrategia `down` para migraciones lifecycle (`review_reports`, `review_tags`, `review_aggregates`, `review_responses`, `review_appeals`) en SQLite/Postgres.
 2. Agregar test de rollback/reapply mínimo para asegurar reversibilidad sin drift de esquema.
+
+## Update 2026-05-11 (rollback/reapply)
+
+Se implementó reversibilidad de migraciones y test de rollback/reapply para cerrar el criterio pendiente de integridad:
+
+- Commit: `52d0926`
+- Cambios:
+  - runners de migración con soporte `direction=up|down`:
+    - `server/src/db/runSqliteMigrations.js`
+    - `server/src/db/runPostgresMigrations.js`
+  - migraciones `down` agregadas:
+    - `server/migrations/sqlite/down/*.sql`
+    - `server/migrations/down/*.sql`
+  - test de integración rollback/reapply:
+    - `server/tests/reviewMigrationRollback.test.js`
+
+Verificación ejecutada:
+- `node --test server/tests/reviewMigrationRollback.test.js`
+  - SQLite: pass (`up/down/up` reversible)
+  - Postgres: skip automático sin `DATABASE_URL`
+
+Riesgo abierto menor:
+- Ejecutar el mismo test con `DATABASE_URL` en CI/paridad Postgres para validar reversibilidad completa en runtime objetivo.
