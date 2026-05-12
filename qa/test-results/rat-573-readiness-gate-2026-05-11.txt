@@ -1,0 +1,7 @@
+timestamp_utc=2026-05-11T08:11:00Z
+RAT-573 readiness gate
+repo: /Users/martinmarquez/uber-services
+gate_product_brief=yes
+gate_deploy_config=no
+RESULT=BLOCKED_MISSING_DEPLOY_CONFIG
+DETAIL=DEPLOY_CONFIG.md not found in current workspace

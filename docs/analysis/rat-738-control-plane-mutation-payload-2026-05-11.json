@@ -1,0 +1,27 @@
+{
+  "issue": "RAT-738",
+  "generatedAt": "2026-05-11T15:55:00Z",
+  "description": "Wave-2 blockedByIssueIds normalization payload for 20 high-priority blocked issues",
+  "mutations": [
+    { "identifier": "RAT-698", "blockedByIssueIds": ["2103c76c-4d84-44d7-a280-c2bf7d47b055"] },
+    { "identifier": "RAT-67", "blockedByIssueIds": ["e0d6efc8-7537-4808-85ed-e62aa89c11c2"] },
+    { "identifier": "RAT-324", "blockedByIssueIds": ["9908d10c-728f-44be-baac-e493857d4790"] },
+    { "identifier": "RAT-157", "blockedByIssueIds": ["dc0fe3d2-36fb-4292-bf89-16c0e2370c3a"] },
+    { "identifier": "RAT-707", "blockedByIssueIds": ["d37f04f9-4a95-41f2-afdd-3f4b4d65305b"] },
+    { "identifier": "RAT-328", "blockedByIssueIds": ["58560670-f1e1-4810-a87b-33105e1fffd2"] },
+    { "identifier": "RAT-49", "blockedByIssueIds": ["29bab326-babe-45d6-bc26-e4d58fb2c77a"] },
+    { "identifier": "RAT-83", "blockedByIssueIds": ["23bbd623-b388-43ed-b42f-e4ac4099738b"] },
+    { "identifier": "RAT-653", "blockedByIssueIds": ["66246667-8928-4635-afdc-353ebe0da7fb"] },
+    { "identifier": "RAT-294", "blockedByIssueIds": ["b5afe099-9dbe-4b41-9662-00814d759422"] },
+    { "identifier": "RAT-299", "blockedByIssueIds": ["ad7da5b7-7151-44a7-a6a0-3c890f4c69b4"] },
+    { "identifier": "RAT-320", "blockedByIssueIds": ["b170e29c-4a24-41ba-93fc-82c81061fd74"] },
+    { "identifier": "RAT-642", "blockedByIssueIds": ["4cf446f2-f8b1-465a-ad5a-5f7c212aa471"] },
+    { "identifier": "RAT-68", "blockedByIssueIds": ["e0d6efc8-7537-4808-85ed-e62aa89c11c2"] },
+    { "identifier": "RAT-27", "blockedByIssueIds": ["e0d6efc8-7537-4808-85ed-e62aa89c11c2"] },
+    { "identifier": "RAT-503", "blockedByIssueIds": ["6385cc1b-d259-440d-afac-f1ef795aca9e"] },
+    { "identifier": "RAT-704", "blockedByIssueIds": ["13d1c201-0ab5-48cd-a904-edfaa336bfaf"] },
+    { "identifier": "RAT-614", "blockedByIssueIds": ["f3a1afce-b645-4a77-a0ac-259eedff2ad9"] },
+    { "identifier": "RAT-705", "blockedByIssueIds": ["d37f04f9-4a95-41f2-afdd-3f4b4d65305b"] },
+    { "identifier": "RAT-554", "blockedByIssueIds": ["4ad52c2e-7e8a-4596-a682-edc196ca3d8d"] }
+  ]
+}

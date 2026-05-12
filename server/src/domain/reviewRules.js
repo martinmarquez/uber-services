@@ -46,6 +46,19 @@ export function validateModerationDecision(decision) {
   if (!decision?.reasonCode) return "reason_code_required";
   if (!decision?.decisionNote) return "decision_note_required";
   if (!/^SEV-[0-3]$/.test(String(decision?.severity ?? ""))) return "severity_invalid";
+  if (decision?.incident && typeof decision.incident !== "object") return "incident_integrity_invalid";
+  if (decision?.incident?.source && !["trusted", "untrusted"].includes(decision.incident.source)) {
+    return "incident_source_invalid";
+  }
+  if (decision?.incident?.state && !["validated", "pending", "rejected"].includes(decision.incident.state)) {
+    return "incident_state_invalid";
+  }
+  if (decision?.incident?.sourceEventId !== undefined) {
+    const sourceEventId = String(decision.incident.sourceEventId);
+    if (!/^[A-Za-z0-9:_-]{8,120}$/.test(sourceEventId)) return "incident_source_event_id_invalid";
+  }
+  const isTrustedValidatedIncident = decision?.incident?.source === "trusted" && decision?.incident?.state === "validated";
+  if (isTrustedValidatedIncident && !decision?.incident?.sourceEventId) return "incident_source_event_id_required";
   return null;
 }
 

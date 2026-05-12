@@ -21,3 +21,7 @@ create table if not exists review_appeals (
 
 create index if not exists idx_review_appeals_review_status
   on review_appeals (review_id, status, created_at desc);
+
+create unique index if not exists idx_review_appeals_single_open
+  on review_appeals (review_id)
+  where status = 'queued';

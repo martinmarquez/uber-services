@@ -39,6 +39,9 @@ test("createReview stores review and emits eligibility + created events", () => 
   assert.equal(events[1].payload.fraudHeuristics.s6Telemetry.completenessRatio, 0);
   assert.equal(events[1].payload.fraudHeuristics.s6Alert.active, false);
   assert.equal(events[1].payload.fraudHeuristics.s6Alert.consecutivePartialCount, 1);
+  assert.equal(events[1].payload.fraudHeuristics.velocityRawCount, 1);
+  assert.equal(events[1].payload.fraudHeuristics.velocityWeightedCount, 1);
+  assert.equal(events[1].payload.fraudHeuristics.velocityReliabilityWeight, 1);
   assert.ok(events[1].integrityHash);
   assert.ok(events[1].signature);
   assert.equal(events[0].previousEventHash, null);
@@ -139,8 +142,86 @@ test("allowed moderation transition emits decision event", () => {
   const event = svc.getEvents().at(-1);
   assert.equal(event.eventName, "review_moderation_decided.v1");
   assert.equal(event.payload.moderationOutcome.excludedFromPublicScore, true);
+  assert.equal(event.payload.moderationOutcome.eligibleForIncidentScore, false);
+  assert.equal(event.payload.moderationOutcome.incidentIntegrity.source, "untrusted");
+  assert.equal(event.payload.moderationOutcome.incidentIntegrity.state, "pending");
+  assert.equal(event.payload.moderationOutcome.incidentIntegrity.actorScope, "authorized");
   assert.equal(event.payload.fraudHeuristics.flaggedByReasonCode, true);
   assert.equal(event.payload.fraudHeuristics.s6Telemetry.sourcesPresent, 1);
+});
+
+test("moderation incident integrity marks trusted+validated incidents as score-eligible", () => {
+  const svc = new ReviewService();
+  const created = svc.createReview({
+    idempotencyKey: "idem-mod-integrity-1",
+    serviceRequestId: "sr-mod-integrity-1",
+    reviewerUserId: "u-mod-integrity-1",
+    providerUserId: "p-mod-integrity-1",
+    rating: 4,
+    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:00:00.000Z",
+  });
+
+  const transitioned = svc.transitionModeration({
+    reviewId: created.review.id,
+    toStatus: "en_revision",
+    actor: { id: "mod-integrity-1", roles: ["moderator"] },
+    decision: {
+      reasonCode: "risk_high",
+      severity: "SEV-2",
+      decisionNote: "Trusted validated incident",
+      incident: {
+        source: "trusted",
+        state: "validated",
+        sourceEventId: "evt_trust_20260512",
+      },
+    },
+    idempotencyKey: "idem-mod-integrity-transition-1",
+    now: "2026-05-07T00:05:00.000Z",
+  });
+
+  assert.equal(transitioned.ok, true);
+  const event = svc.getEvents().at(-1);
+  assert.equal(event.payload.moderationOutcome.eligibleForIncidentScore, true);
+  assert.equal(event.payload.moderationOutcome.incidentIntegrity.source, "trusted");
+  assert.equal(event.payload.moderationOutcome.incidentIntegrity.state, "validated");
+  assert.equal(event.payload.moderationOutcome.incidentIntegrity.actorScope, "authorized");
+  assert.equal(event.payload.moderationOutcome.incidentIntegrity.sourceEventId, "evt_trust_20260512");
+  assert.equal(event.payload.moderationOutcome.incidentIntegrity.reviewerId, "mod-integrity-1");
+});
+
+test("trusted validated incident without source_event_id is rejected", () => {
+  const svc = new ReviewService();
+  const created = svc.createReview({
+    idempotencyKey: "idem-mod-integrity-2",
+    serviceRequestId: "sr-mod-integrity-2",
+    reviewerUserId: "u-mod-integrity-2",
+    providerUserId: "p-mod-integrity-2",
+    rating: 4,
+    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:00:00.000Z",
+  });
+
+  const transitioned = svc.transitionModeration({
+    reviewId: created.review.id,
+    toStatus: "en_revision",
+    actor: { id: "mod-integrity-2", roles: ["moderator"] },
+    decision: {
+      reasonCode: "risk_high",
+      severity: "SEV-2",
+      decisionNote: "Missing source id",
+      incident: {
+        source: "trusted",
+        state: "validated",
+      },
+    },
+    idempotencyKey: "idem-mod-integrity-transition-2",
+  });
+
+  assert.equal(transitioned.ok, false);
+  assert.equal(transitioned.code, "incident_source_event_id_required");
 });
 
 test("moderation transition uses upstream source-availability telemetry when provided", () => {
@@ -572,6 +653,88 @@ test("fraud heuristics propagate configured threshold version", () => {
   assert.equal(created.ok, true);
   const createdEvent = svc.getEvents().at(-1);
   assert.equal(createdEvent.payload.fraudHeuristics.thresholdVersion, "anti_gaming_v2_2026-05-11");
+});
+
+test("velocity burst band uses reliability-weighted count to reduce brigading deboost abuse", () => {
+  const svc = new ReviewService({ velocityMaxPerWindow: 5, velocityWindowMs: 60 * 60 * 1000 });
+  const created = svc.createReview({
+    idempotencyKey: "idem-brigading-weighted-1",
+    serviceRequestId: "sr-brigading-weighted-1",
+    reviewerUserId: "u-brigading-weighted-1",
+    providerUserId: "p-brigading-weighted-1",
+    rating: 1,
+    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:00:00.000Z",
+  });
+  assert.equal(created.ok, true);
+  created.review.riskScore = 95;
+
+  svc.hitVelocityWindow("u-brigading-weighted-1", "2026-05-07T00:00:01.000Z");
+  svc.hitVelocityWindow("u-brigading-weighted-1", "2026-05-07T00:00:02.000Z");
+  svc.hitVelocityWindow("u-brigading-weighted-1", "2026-05-07T00:00:03.000Z");
+  svc.hitVelocityWindow("u-brigading-weighted-1", "2026-05-07T00:00:04.000Z");
+  svc.hitVelocityWindow("u-brigading-weighted-1", "2026-05-07T00:00:05.000Z");
+
+  const transitioned = svc.transitionModeration({
+    reviewId: created.review.id,
+    toStatus: "en_revision",
+    actor: { id: "mod-brigading-weighted-1", roles: ["moderator"] },
+    decision: {
+      reasonCode: "risk_high",
+      severity: "SEV-2",
+      decisionNote: "weighted burst evaluation",
+    },
+    idempotencyKey: "idem-brigading-weighted-2",
+    now: "2026-05-07T00:00:06.000Z",
+  });
+  assert.equal(transitioned.ok, true);
+  const event = svc.getEvents().at(-1);
+  assert.equal(event.payload.fraudHeuristics.velocityRawCount, 6);
+  assert.equal(event.payload.fraudHeuristics.velocityReliabilityWeight, 0.1);
+  assert.equal(event.payload.fraudHeuristics.velocityWeightedCount, 0.6);
+  assert.equal(event.payload.fraudHeuristics.velocityBand, "normal");
+});
+
+test("velocity burst still triggers when reliability is high and weighted count exceeds threshold", () => {
+  const svc = new ReviewService({ velocityMaxPerWindow: 5, velocityWindowMs: 60 * 60 * 1000 });
+  const created = svc.createReview({
+    idempotencyKey: "idem-brigading-high-trust-1",
+    serviceRequestId: "sr-brigading-high-trust-1",
+    reviewerUserId: "u-brigading-high-trust-1",
+    providerUserId: "p-brigading-high-trust-1",
+    rating: 5,
+    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
+    reviewerMatchesParticipant: true,
+    now: "2026-05-07T00:00:00.000Z",
+  });
+  assert.equal(created.ok, true);
+  created.review.riskScore = 10;
+
+  svc.hitVelocityWindow("u-brigading-high-trust-1", "2026-05-07T00:00:01.000Z");
+  svc.hitVelocityWindow("u-brigading-high-trust-1", "2026-05-07T00:00:02.000Z");
+  svc.hitVelocityWindow("u-brigading-high-trust-1", "2026-05-07T00:00:03.000Z");
+  svc.hitVelocityWindow("u-brigading-high-trust-1", "2026-05-07T00:00:04.000Z");
+  svc.hitVelocityWindow("u-brigading-high-trust-1", "2026-05-07T00:00:05.000Z");
+
+  const transitioned = svc.transitionModeration({
+    reviewId: created.review.id,
+    toStatus: "en_revision",
+    actor: { id: "mod-brigading-high-trust-1", roles: ["moderator"] },
+    decision: {
+      reasonCode: "risk_high",
+      severity: "SEV-2",
+      decisionNote: "weighted burst evaluation high trust",
+    },
+    idempotencyKey: "idem-brigading-high-trust-2",
+    now: "2026-05-07T00:00:06.000Z",
+  });
+  assert.equal(transitioned.ok, true);
+  const event = svc.getEvents().at(-1);
+  assert.equal(event.payload.fraudHeuristics.velocityRawCount, 6);
+  assert.equal(event.payload.fraudHeuristics.velocityReliabilityWeight, 0.9);
+  assert.equal(event.payload.fraudHeuristics.velocityWeightedCount, 5.4);
+  assert.equal(event.payload.fraudHeuristics.velocityBand, "burst");
 });
 
 test("createReview uses upstream source-availability telemetry when provided", () => {

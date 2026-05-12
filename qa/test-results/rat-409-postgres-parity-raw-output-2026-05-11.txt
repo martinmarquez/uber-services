@@ -1,0 +1,101 @@
+TAP version 13
+# Subtest: postgres migration runner + review persistence parity
+not ok 1 - postgres migration runner + review persistence parity
+  ---
+  duration_ms: 16650.040292
+  type: 'test'
+  location: '/Users/martinmarquez/uber-services/server/tests/postgresIntegration.test.js:12:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Command failed: psql -X -q -v ON_ERROR_STOP=1 -d postgresql://corredor:corredor@localhost:5433/corredor -c set search_path to "rat8_1778486214419"; 
+          insert into reviews (
+            id, service_request_id, reviewer_user_id, provider_user_id, rating, comment, status, risk_score, eligibility_result, created_at, updated_at
+          ) values (
+            'ab626537-3bb2-47b1-8278-973a11507570',
+            '1810875e-d5bf-49f0-a8e1-a58698cc676d'::uuid,
+            'e0ee7a97-cf1f-4a73-a5a8-64ca937c693b'::uuid,
+            '4ac88e77-17a0-4271-9b19-59ebd63d989e'::uuid,
+            5,
+            'Persisted in postgres',
+            'verificada'::review_status,
+            0,
+            'eligible'::eligibility_result,
+            '2026-05-07T00:10:00.000Z'::timestamptz,
+            '2026-05-07T00:10:00.000Z'::timestamptz
+          )
+        
+    ERROR:  insert or update on table "reviews" violates foreign key constraint "reviews_service_request_fk"
+    DETAIL:  Key (service_request_id)=(1810875e-d5bf-49f0-a8e1-a58698cc676d) is not present in table "service_requests".
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    genericNodeError (node:internal/errors:983:15)
+    wrappedFn (node:internal/errors:537:14)
+    checkExecSyncError (node:child_process:916:11)
+    execFileSync (node:child_process:952:15)
+    PostgresReviewRepository.exec (file:///Users/martinmarquez/uber-services/server/src/db/postgresReviewRepository.js:367:5)
+    PostgresReviewRepository.createReview (file:///Users/martinmarquez/uber-services/server/src/db/postgresReviewRepository.js:23:10)
+    ReviewService.persistReview (file:///Users/martinmarquez/uber-services/server/src/domain/reviewService.js:509:23)
+    ReviewService.createReview (file:///Users/martinmarquez/uber-services/server/src/domain/reviewService.js:89:10)
+    TestContext.<anonymous> (file:///Users/martinmarquez/uber-services/server/tests/postgresIntegration.test.js:18:27)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+  ...
+# Subtest: postgres idempotency parity
+ok 2 - postgres idempotency parity
+  ---
+  duration_ms: 21279.773209
+  type: 'test'
+  ...
+# Subtest: postgres lifecycle migration enforces report idempotency and aggregate constraints
+ok 3 - postgres lifecycle migration enforces report idempotency and aggregate constraints
+  ---
+  duration_ms: 29357.739708
+  type: 'test'
+  ...
+# Subtest: postgres storage-backed appeal state works across service instances
+not ok 4 - postgres storage-backed appeal state works across service instances
+  ---
+  duration_ms: 30005.028792
+  type: 'test'
+  location: '/Users/martinmarquez/uber-services/server/tests/postgresIntegration.test.js:127:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Command failed: psql -X -q -v ON_ERROR_STOP=1 -d postgresql://corredor:corredor@localhost:5433/corredor -c set search_path to "rat8_1778486281610_appeal_persist"; 
+            insert into review_appeals (
+              id, review_id, appellant_user_id, note, status, created_at, resolved_at
+            ) values (
+              'apl_f1fbfe35-a10a-4838-9b2a-47b48957c813'::uuid,
+              'c3840a03-a3a0-4176-ac73-a1ff9e334a7c'::uuid,
+              '203f3df4-0b81-4890-952d-12e2b64ab422',
+              'Primera apelacion persistida en postgres.',
+              'queued',
+              '2026-05-07T01:00:00.000Z'::timestamptz,
+              null::timestamptz
+            )
+          
+    ERROR:  invalid input syntax for type uuid: "apl_f1fbfe35-a10a-4838-9b2a-47b48957c813"
+    LINE 5:           'apl_f1fbfe35-a10a-4838-9b2a-47b48957c813'::uuid,
+                      ^
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    genericNodeError (node:internal/errors:983:15)
+    wrappedFn (node:internal/errors:537:14)
+    checkExecSyncError (node:child_process:916:11)
+    execFileSync (node:child_process:952:15)
+    PostgresReviewRepository.exec (file:///Users/martinmarquez/uber-services/server/src/db/postgresReviewRepository.js:367:5)
+    PostgresReviewRepository.createAppeal (file:///Users/martinmarquez/uber-services/server/src/db/postgresReviewRepository.js:164:12)
+    ReviewService.persistAppeal (file:///Users/martinmarquez/uber-services/server/src/domain/reviewService.js:526:23)
+    ReviewService.openAppeal (file:///Users/martinmarquez/uber-services/server/src/domain/reviewService.js:230:12)
+    TestContext.<anonymous> (file:///Users/martinmarquez/uber-services/server/tests/postgresIntegration.test.js:145:27)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 2
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 98065.14975

@@ -1,0 +1,64 @@
+RAT-814 blocked queue hygiene check
+date=2026-05-11T15:11:21Z
+snapshot=qa/test-results/rat-709-cto-cluster-snapshot-2026-05-11T09:36:13Z.json
+blocked_total=150
+blocked_missing_blocker_edges=150
+cto_blocked_missing_blocker_edges=55
+-- cto missing-edge issues --
+RAT-705	Post RAT-687 completion ledger on RAT-554 (cross-assignee handoff)	2026-05-11T09:32:56.121Z
+RAT-554	Normalize blockers on blocked issues missing blockedByIssueIds	2026-05-11T09:32:12.583Z
+RAT-694	RAT-396A Implementar guardrails anti-reopen en runtime /api/issues	2026-05-11T09:31:34.905Z
+RAT-613	RAT-591 sweep shard: consolidate 2 duplicates owned by 516aa272 onto RAT-568	2026-05-11T09:30:56.400Z
+RAT-432	RAT-386 follow-up: prevent repeated auto-reopen after review closure	2026-05-11T09:30:56.384Z
+RAT-402	Fix RAT-205 auto-reopen status churn after terminal close	2026-05-11T09:30:56.347Z
+RAT-393	Reroute RAT-362 to control-plane repo owning /api/issues lifecycle	2026-05-11T09:30:56.329Z
+RAT-685	Attach control-plane workspace ownership for issue-lifecycle fix lane	2026-05-11T09:30:39.034Z
+RAT-396	RAT-22D Corregir reapertura automatica de RAT-22 (status loop)	2026-05-11T09:29:51.422Z
+RAT-598	Stale sweep wave 1: CTO owns lifecycle/status-drift cluster closure	2026-05-11T09:28:36.817Z
+RAT-355	Investigate RAT-35 status drift (reopens to in_progress after done)	2026-05-11T09:27:58.849Z
+RAT-406	RAT-400A Implementar guardrail anti-reopen en runtime de lifecycle (control-plane)	2026-05-11T09:27:58.765Z
+RAT-537	Implement terminal done guard to prevent no-delta auto-reopen (RAT-188 class)	2026-05-11T09:27:58.722Z
+RAT-457	Investigate repeated status drift reopening closed issue RAT-188	2026-05-11T09:27:58.679Z
+RAT-556	Sweep stale in_progress issues (no active run) and force state correction	2026-05-11T09:27:58.637Z
+RAT-591	Stale sweep: collapse status-flapping/reopen bug cluster into single remediation track	2026-05-11T09:27:58.597Z
+RAT-437	Investigate and stop repeated auto-reopen of completed review issues	2026-05-11T09:27:58.554Z
+RAT-426	Stability: RAT-46 false reopen loop on issue_blockers_resolved	2026-05-11T09:27:58.461Z
+RAT-414	Implement no-delta terminal reopen guard for RAT-233 drift path in issue lifecycle runtime	2026-05-11T09:27:58.408Z
+RAT-397	Fix issue lifecycle drift: done issues reopening on heartbeat checkout	2026-05-11T09:27:58.355Z
+RAT-394	Regression: RAT-133 still auto-reopens after RAT-361 closure	2026-05-11T09:27:58.309Z
+RAT-368	Triage automation status loop reopening RAT-21	2026-05-11T09:27:58.260Z
+RAT-363	Workflow fix: RAT-115 auto-reopen loop without new context	2026-05-11T09:27:58.214Z
+RAT-361	Investigate RAT-133 status auto-reopen churn	2026-05-11T09:27:58.165Z
+RAT-509	Review silent active run for CTO	2026-05-11T09:27:58.071Z
+RAT-400	RAT-22D Corregir reapertura automatica de RAT-22 (status loop)	2026-05-11T09:27:57.784Z
+RAT-580	RAT-572: Normalize blocked issues with missing blockedByIssueIds	2026-05-11T09:32:32.295Z
+RAT-422	Investigate repeated status drift reopening completed issue RAT-57	2026-05-11T09:30:56.937Z
+RAT-367	Investigate auto-reopen loop for completed issue RAT-150	2026-05-11T09:30:56.920Z
+RAT-416	Investigate repeated status drift reopening RAT-335 after done	2026-05-11T09:30:56.901Z
+RAT-386	Review productivity for RAT-304	2026-05-11T09:28:00.111Z
+RAT-465	Investigate RAT-314 done->in_progress reopen loop	2026-05-11T09:28:00.065Z
+RAT-100	Review productivity for RAT-64	2026-05-11T09:28:00.022Z
+RAT-177	Review productivity for RAT-133	2026-05-11T09:27:59.978Z
+RAT-175	Review productivity for RAT-131	2026-05-11T09:27:59.934Z
+RAT-454	Fix RAT-201 productivity-review auto-reopen loop	2026-05-11T09:27:59.891Z
+RAT-438	Investigate repeated status drift reopening done review issues	2026-05-11T09:27:59.845Z
+RAT-364	Fix auto-reopen rule causing RAT-16 status churn	2026-05-11T09:27:59.801Z
+RAT-411	Prevent repeated status-drift reopen loops for resolved productivity-review issues	2026-05-11T09:27:59.756Z
+RAT-418	Investigate repeated status drift reopening closed silent-run review issues	2026-05-11T09:27:59.708Z
+RAT-412	Fix RAT-195 done-state reopen loop without new evidence	2026-05-11T09:27:59.664Z
+RAT-415	Investigate RAT-89 status flapping after done closure	2026-05-11T09:27:59.571Z
+RAT-461	Fix productivity-review auto-reopen churn for terminal source issues	2026-05-11T09:27:59.529Z
+RAT-447	Fix status churn: RAT-140 auto-reopens without scope delta	2026-05-11T09:27:59.487Z
+RAT-442	Stop RAT-180/RAT-132 status-drift reopen loop	2026-05-11T09:27:59.448Z
+RAT-440	Fix RAT-112 reopen-loop lifecycle policy	2026-05-11T09:27:59.406Z
+RAT-419	Investigar y corregir reopen/status-drift automático en RAT-11	2026-05-11T09:27:59.363Z
+RAT-417	Implement terminal done-state no-delta reopen guard in control-plane lifecycle	2026-05-11T09:27:59.316Z
+RAT-407	Prevent repeated reopen drift for completed productivity-review issues	2026-05-11T09:27:59.273Z
+RAT-399	Investigate recurring status drift on RAT-95 productivity review	2026-05-11T09:27:59.233Z
+RAT-362	RAT-51 Follow-up: corregir reapertura automatica de estado (done -> in_progress)	2026-05-11T09:27:59.149Z
+RAT-357	Stabilize productivity-review lifecycle to prevent auto-reopen loops	2026-05-11T09:27:59.107Z
+RAT-449	Fix workflow: RAT-54 auto-reopen without new context	2026-05-11T09:27:59.062Z
+RAT-451	Fix workflow: RAT-54 auto-reopen without new context	2026-05-11T09:27:59.018Z
+RAT-371	Investigate repeated status drift reopening closed issue RAT-244	2026-05-11T09:27:58.972Z
+RESULT=BLOCKED_MISSING_BLOCKER_EDGES
+DETAIL=Blocked issues exist without explicit blockedByIssueIds; apply control-plane edge normalization

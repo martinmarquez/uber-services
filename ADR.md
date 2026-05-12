@@ -33,6 +33,17 @@ Este ADR consolida decisiones vigentes para ejecución backend y referencia docu
    - Eventos de dominio firmados y verificables offline.
 8. Persistencia:
    - Soporte SQLite y Postgres con migraciones por runner dedicado.
+9. Pipeline de heartbeat:
+   - La rutina de apertura (`open routine`) debe ejecutarse como máximo una vez por issue/contexto de wake.
+   - Duplicados se bloquean por guardrail (`open_routine_duplicate_execution_blocked`) para evitar reaperturas y ejecución redundante.
+10. Lifecycle de productivity-review (anti auto-reopen):
+   - Wakes de telemetría sin delta material no deben reabrir issues terminales (`done`/`cancelled`).
+   - Se considera delta material para reactivación operativa: `hasBlockerDelta`, breach de ventana sin movimiento y breach de umbral de churn.
+   - Cambios terminal->activo siguen requiriendo `resume=true` con actor y reason auditables.
+   - Cambios `blocked->activo` requieren trigger explícito:
+     - `hasCommentDelta` o `hasEvidenceDelta`, o
+     - resolución explícita de `blockedBy` con `resumeSource=issue_blockers_resolved`, o
+     - reapertura manual (`resume=true`) con actor/reason auditables.
 
 ## Referencias normativas
 

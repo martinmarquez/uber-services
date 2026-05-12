@@ -1,0 +1,64 @@
+{
+  "run_id": "rat10d-YYYY-MM-DDTHH:MM:SSZ",
+  "generated_at_utc": "YYYY-MM-DDTHH:MM:SSZ",
+  "owner_issue": "RAT-10",
+  "qa_issue": "RAT-24",
+  "git_commit": "<commit-sha>",
+  "seed": {
+    "seed_version": "seed-v1-2026Q2",
+    "seed_value": 20260506,
+    "seed_scope": ["synthetic_data_generation", "simulations", "bootstrap"]
+  },
+  "dataset_snapshot": {
+    "data_cutoff_utc": "YYYY-MM-DDTHH:MM:SSZ",
+    "timezone": "UTC",
+    "snapshot_uri": "s3://.../rat10d/snapshots/<snapshot-id>",
+    "dataset_hash_sha256": "<sha256>",
+    "schema_version": "ratings-dataset-v1"
+  },
+  "baseline": {
+    "baseline_id": "baseline_naive_avg_v1",
+    "baseline_commit": "<commit-sha>",
+    "baseline_notes": "Definicion formal del baseline congelado"
+  },
+  "scoring_parameters": {
+    "params_version": "ranking_robust_v1.1",
+    "params_json": {
+      "C": 4.2,
+      "m": 20,
+      "k": 15,
+      "lambda": 0.0057762265,
+      "gamma": 0.35
+    },
+    "params_hash_sha256": "<sha256>"
+  },
+  "incident_aggregation": {
+    "function": "sum_decay_then_cap",
+    "window_days": 180,
+    "cap": 3.0,
+    "decay_rule": "d_j=exp(-ln(2)*age_j/90), include if age_j<=180"
+  },
+  "ab_traceability": {
+    "experiment_ids": ["exp_rat10_ab_v1"],
+    "window_start_utc": "YYYY-MM-DDTHH:MM:SSZ",
+    "window_end_utc": "YYYY-MM-DDTHH:MM:SSZ",
+    "strata": ["city", "category", "platform"],
+    "cuped_covariate": "historical_booking_propensity"
+  },
+  "data_quality_checks": {
+    "srm_p_value": 0.0,
+    "srm_pass": false,
+    "logging_completeness_pass": false,
+    "deduplication_pass": false,
+    "fraud_filter_version": "bot-filter-v2"
+  },
+  "results_artifacts": {
+    "metrics_table_uri": "s3://.../rat10d/results/<run-id>/metrics.parquet",
+    "decision_memo_uri": "s3://.../rat10d/results/<run-id>/decision-memo.md"
+  },
+  "qa_gate": {
+    "decision": "PASS",
+    "reviewer": "Data Analyst",
+    "reviewed_at_utc": "YYYY-MM-DDTHH:MM:SSZ"
+  }
+}

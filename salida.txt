@@ -1,0 +1,720 @@
+:qdiff --git a/package.json b/package.json
+index 532d2db..d84181a 100644
+--- a/package.json
++++ b/package.json
+@@ -7,7 +7,13 @@
+     "dev": "vite",
+     "build": "vite build",
+     "preview": "vite preview --host",
+-    "test": "vitest run src/components/MobileReviewFlow.test.jsx"
++    "test": "vitest run src/components/MobileReviewFlow.test.jsx",
++    "server:start": "node server/src/http/startServer.js",
++    "db:migrate:sqlite": "node server/src/db/runSqliteMigrations.js server/.data/reviews-dev.sqlite",
++    "db:migrate:postgres": "node server/src/db/runPostgresMigrations.js \"$DATABASE_URL\" \"${PG_SCHEMA:-public}\"",
++    "db:local:postgres:up": "docker run --name uber-services-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=uber-services -p 5432:5432 -d postgres:16",
++    "db:local:postgres:down": "docker rm -f uber-services-pg",
++    "smoke:local": "./tools/smoke/local-availability-smoke.sh"
+   },
+   "dependencies": {
+     "react": "^18.3.1",
+diff --git a/qa/test-plans/ratings-reviews-quality-gate.md b/qa/test-plans/ratings-reviews-quality-gate.md
+index 9f4fbd1..2f0f967 100644
+--- a/qa/test-plans/ratings-reviews-quality-gate.md
++++ b/qa/test-plans/ratings-reviews-quality-gate.md
+@@ -23,7 +23,7 @@ This quality gate is mandatory for all rating/review features: create, edit, del
+ - Authorization bypass attempts on report/moderation endpoints.
+ 
+ 3. Performance & Reliability QA
+-- P95/P99 latency on submit/read/report endpoints.
++- Numeric SLO gates on submit/read/report endpoints (p95/p99/error-budget thresholds).
+ - Degraded dependencies and high-latency backend scenarios.
+ - Idempotency and retry behavior for duplicate submits.
+ - Partial offline flow: client queue + eventual sync.
+@@ -32,8 +32,13 @@ This quality gate is mandatory for all rating/review features: create, edit, del
+ - Form clarity and validation copy.
+ - Recovery path after submission errors.
+ - Accessibility checks for keyboard/screen reader basics.
++- Modal accessibility checks (`Escape`, focus trap, focus restore) for report/reply flows.
+ - Dispute and report workflows understandable without support intervention.
+ 
++5. Contract Compatibility QA
++- Backward compatibility checks for moderation/ranking payloads (`vCurrent` and `vPrev`).
++- Safe handling of additive schema changes and explicit CI failure on breaking removals/renames.
++
+ ## Mandatory Review Protocol
+ - CTO review: technical coverage and architecture risks.
+ - UX/UI Designer review: usability and accessibility coverage.
+@@ -57,4 +62,5 @@ Release remains blocked until both cycles are completed with evidence in `qa/tes
+ - Test run report per cycle.
+ - Defect list with severity, owner, status.
+ - Sign-off notes from CTO, UX/UI, Security.
++- Reproducibility metadata: commit SHA, environment/stage, dataset/snapshot id, seed, runner version.
+ - Final gate decision: PASS/BLOCKED.
+diff --git a/qa/test-plans/ratings-reviews-test-matrix.md b/qa/test-plans/ratings-reviews-test-matrix.md
+index 2e4f4b2..e762a70 100644
+--- a/qa/test-plans/ratings-reviews-test-matrix.md
++++ b/qa/test-plans/ratings-reviews-test-matrix.md
+@@ -11,11 +11,30 @@
+ | A-02 | Abuse/Security | Offensive content in review text | Content blocked/flagged according to moderation policy | P0 |
+ | A-03 | Abuse/Security | Auth bypass attempt on moderation endpoint | Unauthorized blocked, event logged | P0 |
+ | A-04 | Abuse/Security | Duplicate submit replay | Idempotency prevents duplicate persisted reviews | P0 |
+-| R-01 | Reliability | 2s-5s backend latency on submit | Client shows pending state; eventual success/fail consistent | P1 |
++| R-01 | Reliability | 2s-5s backend latency on submit | Client pending state renders in <=250ms; final resolution <=8s; timeout error rate <=1% | P1 |
+ | R-02 | Reliability | Partial offline submit then reconnect | Local queue syncs once, no duplicate review | P1 |
+-| R-03 | Reliability | Dependency timeout in aggregate service | Graceful fallback, no corrupted aggregates | P1 |
+-| P-01 | Performance | Peak load read of review feed | P95/P99 within SLO, no elevated error rates | P1 |
++| R-03 | Reliability | Dependency timeout in aggregate service | Graceful fallback in <=1s; stale-safe response served; aggregate mismatch incidents = 0 | P1 |
++| P-01 | Performance | Peak load read of review feed | `/reviews/feed` p95 <=350ms, p99 <=800ms, error rate <0.5% at peak profile | P1 |
+ | U-01 | UX | Validation errors and helper text clarity | User can correct and resubmit without confusion | P1 |
+ | U-02 | UX | Dispute flow from review detail | User can complete dispute with clear status feedback | P1 |
++| U-03 | UX/A11y | Report/Reply modal keyboard behavior | `Escape` closes dialog; focus trap cycles tabbables; focus restores to trigger on close | P0 |
+ | X-01 | Regression | Existing rating history after schema changes | No data loss, counts and averages preserved | P0 |
+ | X-02 | Regression | Cancellation-related rating edge case | Eligibility and visibility follow policy | P0 |
++| RR-01 | Ranking Robusto | `Q_bayes` with low `v` converges to prior `C` | Score remains close to prior and does not over-rank low-sample providers | P0 |
++| RR-02 | Ranking Robusto | `F_volume` monotonic behavior with increasing `v` | Factor increases monotonically and asymptotically approaches 1 | P0 |
++| RR-03 | Ranking Robusto | `F_recency` range validation in worst/best rating history | `F_recency = 0.85 + 0.15 * ((R_rec-1)/4)` y salida exacta en `[0.85,1.00]` | P0 |
++| RR-04 | Ranking Robusto | High fraud risk lowers `F_reliability` and final score | Providers with high risk signals receive deterministic deboost | P0 |
++| RR-05 | Ranking Robusto | Incident severity shock (`I_sev`) impacts score within SLA | Severe incident causes expected score drop and rollback path under 1 hour | P0 |
++| RR-06 | Ranking Robusto | Low-N display boundaries by `v_eff` | Correct badge and score visibility at thresholds `<5`, `5`, `15`, `40` | P0 |
++| RR-07 | Ranking Robusto | `F_recency` exact boundary checks (`R_rec=1` and `R_rec=5`) | Returns exactly `0.85` and `1.00` with `R_rec_norm=(R_rec-1)/4` | P0 |
++| RR-08 | Ranking Robusto | `I_sev` aggregation with multiple incidents (sum + decay + cap) | Deterministic `I_sev=min(3.0,sum(sev_j*d_j))` for rolling 180d | P0 |
++| RR-09 | Ranking Robusto | API/UI contract for low-N formatting and rounding | `displayScore` only when `v_eff>=5`, 1 decimal, half-away-from-zero rounding | P0 |
++| RR-10 | Ranking Robusto | Anti-gaming burst trigger and deboost duration | `reviews_24h_zscore>=3.5` or `>=p99` applies `F_burst=0.85` for 72h | P0 |
++| RR-11 | Ranking Robusto | Shadow-eval handling for high-risk reviews | Reviews with `risk>=0.8` excluded from public score until verification | P0 |
++| RR-12 | Ranking Robusto | Offline simulation reproducibility gate | Run metadata includes `baseline_naive_avg_v1`, snapshot, seed `20260506`, commit | P0 |
++| MC-01 | Moderation Contract | Canonical enum parity API/UI for moderation state | Only `verificada`, `en_revision`, `no_recomendada`, `removida` accepted/rendered; unknown state rejected or mapped to safe fallback | P0 |
++| MC-02 | Moderation Contract | Threshold band mapping `riskScore` -> state | `0-39`=>`verificada`, `40-69`=>`verificada` (reduced weight), `70-84`=>`no_recomendada`, `85-100`=>`en_revision` | P0 |
++| MC-03 | Moderation Contract | Public score isolation by moderation state | Any review in `en_revision`, `no_recomendada`, `removida` excluded from public aggregates | P0 |
++| MC-04 | Moderation Contract | UI low-confidence indicator behavior | UI shows low-confidence marker for `riskScore >= 70` and moderation filter includes all non-`verificada` states | P1 |
++| MC-05 | Policy/Playbook Consistency | Policy-to-product reasoning consistency for low-confidence handling | API status semantics, UI labels, and playbook wording do not conflict for hold/quarantine/removal flows | P0 |
++| API-01 | Contract Versioning | Moderation/ranking payload backward compatibility | Contract tests pass for `vCurrent` and `vPrev`; additive fields tolerated; removed/renamed fields fail CI | P0 |
+diff --git a/qa/test-results/ratings-reviews-hardening-cycles-template.md b/qa/test-results/ratings-reviews-hardening-cycles-template.md
+index a025c82..1bcde6b 100644
+--- a/qa/test-results/ratings-reviews-hardening-cycles-template.md
++++ b/qa/test-results/ratings-reviews-hardening-cycles-template.md
+@@ -2,6 +2,11 @@
+ 
+ ## Cycle 1
+ - Date:
++- Commit SHA:
++- Environment/Stage:
++- Dataset/Snapshot ID:
++- Random Seed:
++- Runner Version:
+ - Scope:
+ - Test run reference:
+ - Critical defects found:
+@@ -11,6 +16,11 @@
+ 
+ ## Cycle 2
+ - Date:
++- Commit SHA:
++- Environment/Stage:
++- Dataset/Snapshot ID:
++- Random Seed:
++- Runner Version:
+ - Scope:
+ - Test run reference:
+ - Critical defects found:
+diff --git a/server/README.md b/server/README.md
+index 0d39aff..88b7585 100644
+--- a/server/README.md
++++ b/server/README.md
+@@ -22,3 +22,9 @@ This scaffold provides the minimum execution surface to unblock RAT-8:
+ `node server/src/db/runSqliteMigrations.js server/.data/reviews-dev.sqlite`
+ 3. DB-backed repository/outbox integration is available through `SqliteReviewRepository` + `ReviewService({ repository })`.
+ 4. Promote SQLite + PostgreSQL integration tests to CI with a seeded `DATABASE_URL`.
++
++## Security runtime notes
++
++- API actor headers can be cryptographically verified by setting `ACTOR_SIGNING_SECRET`.
++- Signature contract reference:
++  - `docs/trust-safety/rat-134-actor-signing-contract.md`
+diff --git a/server/src/api/routes.js b/server/src/api/routes.js
+index 0d1963e..93d55e0 100644
+--- a/server/src/api/routes.js
++++ b/server/src/api/routes.js
+@@ -1,6 +1,7 @@
+ import {
+   validateCreateReviewPayload,
+   validatePatchReviewPayload,
++  validateAppealPayload,
+   businessError as reviewBusinessError,
+ } from "./reviewsContract.js";
+ import {
+@@ -67,7 +68,7 @@ export const routes = [
+   {
+     method: "POST",
+     path: "/api/v1/reviews/:reviewId/appeals",
+-    validateBody: (body) => (!body?.note ? "appeal_note_required" : null),
++    validateBody: validateAppealPayload,
+   },
+ ];
+ 
+@@ -114,6 +115,12 @@ export function validateRouteRequest(route, payloadOrReq = {}, maybeCtx = {}) {
+     });
+   }
+ 
++  if (route.path.endsWith("/reports") && !isAuthenticated(actor)) {
++    return reviewBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
++      code: "unauthenticated",
++    });
++  }
++
+   if (route.validateBody) {
+     const code = route.validateBody(body);
+     if (code) {
+diff --git a/server/src/domain/reviewService.js b/server/src/domain/reviewService.js
+index 109222c..d1656c4 100644
+--- a/server/src/domain/reviewService.js
++++ b/server/src/domain/reviewService.js
+@@ -112,6 +112,7 @@ export class ReviewService {
+           riskScore: review.riskScore,
+           velocityCount: scoreInputs.velocityCount,
+           velocityLimit: this.velocityMaxPerWindow,
++          sourceAvailability: input.sourceAvailability,
+           thresholdVersion: this.thresholdVersion,
+         }),
+       },
+@@ -158,6 +159,7 @@ export class ReviewService {
+           velocityCount: this.currentVelocityCount(review.reviewerUserId),
+           velocityLimit: this.velocityMaxPerWindow,
+           reasonCode: input.decision.reasonCode,
++          sourceAvailability: input.decision?.sourceAvailability ?? input.sourceAvailability,
+           thresholdVersion: this.thresholdVersion,
+         }),
+       },
+@@ -231,6 +233,8 @@ export class ReviewService {
+ 
+   closeAppeal(input) {
+     if (!isValidIdempotencyKey(input?.idempotencyKey)) return { ok: false, code: "idempotency_key_required" };
++    const replay = this.getIdempotent(input.idempotencyKey);
++    if (replay) return { replay: true, ...replay };
+     const review = this.getReviewById(input.reviewId);
+     if (!review) return { ok: false, code: "not_found" };
+     if (!canModerate(input?.actor)) return { ok: false, code: "forbidden_actor" };
+@@ -335,6 +339,7 @@ export class ReviewService {
+           velocityCount: this.currentVelocityCount(review.reviewerUserId),
+           velocityLimit: this.velocityMaxPerWindow,
+           reasonCode: report.reasonCode,
++          sourceAvailability: input.sourceAvailability,
+           thresholdVersion: this.thresholdVersion,
+         }),
+       },
+@@ -569,19 +574,32 @@ function buildFraudHeuristics({
+   velocityCount,
+   velocityLimit,
+   reasonCode = null,
++  sourceAvailability = null,
+   thresholdVersion = DEFAULT_THRESHOLD_VERSION,
+ }) {
+   return {
+     thresholdVersion,
+     riskBand: toRiskBand(riskScore),
+     velocityBand: toVelocityBand(velocityCount, velocityLimit),
+-    s6Telemetry: buildS6Telemetry({ reasonCode }),
++    s6Telemetry: buildS6Telemetry({ reasonCode, sourceAvailability }),
+     flaggedByReasonCode: isFraudReason(reasonCode),
+     reasonCode: reasonCode ?? null,
+   };
+ }
+ 
+-function buildS6Telemetry({ reasonCode }) {
++function buildS6Telemetry({ reasonCode, sourceAvailability }) {
++  const upstream = normalizeSourceAvailability(sourceAvailability);
++  if (upstream) {
++    const sourcesExpected = upstream.sourcesExpected;
++    const sourcesPresent = clamp(upstream.sourcesPresent, 0, sourcesExpected);
++    return {
++      sourcesExpected,
++      sourcesPresent,
++      completenessRatio: sourcesExpected > 0 ? round4(sourcesPresent / sourcesExpected) : 0,
++      status: sourcesExpected > 0 && sourcesPresent === sourcesExpected ? "complete" : "partial",
++    };
++  }
++
+   const hasReasonCode = typeof reasonCode === "string" && reasonCode.trim().length > 0;
+   const sourcesPresent = hasReasonCode ? 1 : 0;
+   const sourcesExpected = 3;
+@@ -593,6 +611,20 @@ function buildS6Telemetry({ reasonCode }) {
+   };
+ }
+ 
++function normalizeSourceAvailability(input) {
++  if (!input || typeof input !== "object") return null;
++  const expectedRaw = input.sourcesExpected ?? input.expected ?? input.total ?? input.upstreamSourcesExpected;
++  const presentRaw = input.sourcesPresent ?? input.present ?? input.available ?? input.upstreamSourcesPresent;
++  const sourcesExpected = Number(expectedRaw);
++  const sourcesPresent = Number(presentRaw);
++  if (!Number.isFinite(sourcesExpected) || !Number.isFinite(sourcesPresent)) return null;
++  if (sourcesExpected <= 0 || sourcesPresent < 0) return null;
++  return {
++    sourcesExpected: Math.floor(sourcesExpected),
++    sourcesPresent: Math.floor(sourcesPresent),
++  };
++}
++
+ function buildModerationOutcome({ toStatus, reasonCode, severity }) {
+   return {
+     toStatus,
+diff --git a/server/src/security/eventIntegrity.js b/server/src/security/eventIntegrity.js
+index 6dc0455..31ccac2 100644
+--- a/server/src/security/eventIntegrity.js
++++ b/server/src/security/eventIntegrity.js
+@@ -4,10 +4,16 @@ const DEFAULT_ALGORITHM = "RSA-SHA256";
+ const DEFAULT_KEY_ID = "local-dev-key";
+ 
+ export function defaultEventSigner(options = {}) {
++  const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV ?? "development";
++  const requireAsymmetricKey = options.requireAsymmetricKey ?? !isNonProductionEnv(nodeEnv);
+   const privateKeyPem = options.privateKeyPem ?? process.env.EVENT_SIGNING_PRIVATE_KEY_PEM;
+-  const keyId = options.keyId ?? process.env.EVENT_SIGNING_KEY_ID ?? DEFAULT_KEY_ID;
++  const keyId = options.keyId ?? process.env.EVENT_SIGNING_KEY_ID ?? (requireAsymmetricKey ? null : DEFAULT_KEY_ID);
+   const algorithm = options.algorithm ?? DEFAULT_ALGORITHM;
+ 
++  if (requireAsymmetricKey && (!privateKeyPem || !keyId)) {
++    throw new Error("EVENT_SIGNING_PRIVATE_KEY_PEM and EVENT_SIGNING_KEY_ID are required outside development/test");
++  }
++
+   if (!privateKeyPem) return hmacFallbackSigner(options.hmacKey);
+ 
+   return {
+@@ -45,15 +51,16 @@ export function verifyEventChain(events, resolvePublicKeyById) {
+       return { ok: false, code: "event_payload_tampered", index };
+     }
+ 
+-    const publicKeyPem = resolvePublicKeyById?.(signatureKeyId);
+-    if (!publicKeyPem) return { ok: false, code: "public_key_not_found", index };
+-
+-    const validSignature = crypto.verify(
++    const verificationMaterial = resolvePublicKeyById?.(signatureKeyId, signatureAlgorithm, event);
++    const validSignature = verifySignature({
+       signatureAlgorithm,
+-      Buffer.from(integrityHash, "hex"),
+-      publicKeyPem,
+-      Buffer.from(signature, "base64"),
+-    );
++      integrityHash,
++      signature,
++      verificationMaterial,
++    });
++    if (validSignature === null) {
++      return { ok: false, code: "verification_material_not_found", index };
++    }
+     if (!validSignature) return { ok: false, code: "invalid_signature", index };
+ 
+     expectedPreviousHash = integrityHash;
+@@ -62,7 +69,7 @@ export function verifyEventChain(events, resolvePublicKeyById) {
+   return { ok: true, verifiedEvents: events.length };
+ }
+ 
+-function hmacFallbackSigner(secret = process.env.EVENT_SIGNING_FALLBACK_HMAC_KEY ?? "dev-only-insecure-key") {
++function hmacFallbackSigner(secret = process.env.EVENT_SIGNING_FALLBACK_HMAC_KEY ?? crypto.randomBytes(32).toString("hex")) {
+   return {
+     signDigest(digestHex) {
+       const signature = crypto.createHmac("sha256", secret).update(digestHex).digest("hex");
+@@ -74,3 +81,27 @@ function hmacFallbackSigner(secret = process.env.EVENT_SIGNING_FALLBACK_HMAC_KEY
+     },
+   };
+ }
++
++function verifySignature({ signatureAlgorithm, integrityHash, signature, verificationMaterial }) {
++  if (!verificationMaterial) return null;
++
++  if (signatureAlgorithm === "HMAC-SHA256") {
++    const expected = crypto.createHmac("sha256", verificationMaterial).update(integrityHash).digest("hex");
++    const expectedBuffer = Buffer.from(expected, "utf8");
++    const signatureBuffer = Buffer.from(signature, "utf8");
++    if (expectedBuffer.length !== signatureBuffer.length) return false;
++    return crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
++  }
++
++  return crypto.verify(
++    signatureAlgorithm,
++    Buffer.from(integrityHash, "hex"),
++    verificationMaterial,
++    Buffer.from(signature, "base64"),
++  );
++}
++
++function isNonProductionEnv(env) {
++  const normalized = String(env).toLowerCase();
++  return normalized === "development" || normalized === "test";
++}
+diff --git a/server/tests/reviewService.test.js b/server/tests/reviewService.test.js
+index 28d6c18..e12dde8 100644
+--- a/server/tests/reviewService.test.js
++++ b/server/tests/reviewService.test.js
+@@ -141,6 +141,40 @@ test("allowed moderation transition emits decision event", () => {
+   assert.equal(event.payload.fraudHeuristics.s6Telemetry.sourcesPresent, 1);
+ });
+ 
++test("moderation transition uses upstream source-availability telemetry when provided", () => {
++  const svc = new ReviewService();
++  const created = svc.createReview({
++    idempotencyKey: "idem-mod-upstream-1",
++    serviceRequestId: "sr-mod-upstream-1",
++    reviewerUserId: "u-mod-upstream-1",
++    providerUserId: "p-mod-upstream-1",
++    rating: 5,
++    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
++    reviewerMatchesParticipant: true,
++    now: "2026-05-07T00:00:00.000Z",
++  });
++
++  const transitioned = svc.transitionModeration({
++    reviewId: created.review.id,
++    toStatus: "en_revision",
++    actor: { id: "mod-upstream-1", roles: ["moderator"] },
++    decision: {
++      reasonCode: "risk_high",
++      severity: "SEV-3",
++      decisionNote: "Upstream confirms full signal availability",
++      sourceAvailability: { sourcesExpected: 3, sourcesPresent: 3 },
++    },
++    idempotencyKey: "idem-mod-upstream-op-1",
++  });
++
++  assert.equal(transitioned.ok, true);
++  const event = svc.getEvents().at(-1);
++  assert.equal(event.payload.fraudHeuristics.s6Telemetry.sourcesExpected, 3);
++  assert.equal(event.payload.fraudHeuristics.s6Telemetry.sourcesPresent, 3);
++  assert.equal(event.payload.fraudHeuristics.s6Telemetry.completenessRatio, 1);
++  assert.equal(event.payload.fraudHeuristics.s6Telemetry.status, "complete");
++});
++
+ test("moderation transition is idempotent for repeated idempotency key", () => {
+   const svc = new ReviewService();
+   const created = svc.createReview({
+@@ -406,6 +440,47 @@ test("closeAppeal rejects unknown appeal id", () => {
+   assert.equal(closed.code, "appeal_not_found");
+ });
+ 
++test("closeAppeal is idempotent for repeated idempotency key", () => {
++  const svc = new ReviewService();
++  const created = svc.createReview({
++    idempotencyKey: "idem-appeal-close-idem-review-1",
++    serviceRequestId: "sr-appeal-close-idem-1",
++    reviewerUserId: "u-appeal-close-idem-1",
++    providerUserId: "p-appeal-close-idem-1",
++    rating: 4,
++    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
++    reviewerMatchesParticipant: true,
++    now: "2026-05-07T00:00:00.000Z",
++  });
++
++  const opened = svc.openAppeal({
++    reviewId: created.review.id,
++    actor: { id: "u-appeal-close-idem-1", roles: ["user"] },
++    note: "Appeal to be closed idempotently.",
++    idempotencyKey: "idem-appeal-close-idem-open-1",
++  });
++  assert.equal(opened.ok, true);
++
++  const firstClose = svc.closeAppeal({
++    reviewId: created.review.id,
++    actor: { id: "mod-close-idem-1", roles: ["moderator"] },
++    appealId: opened.appeal.id,
++    resolution: "accepted",
++    idempotencyKey: "idem-appeal-close-idem-op-1",
++  });
++  const secondClose = svc.closeAppeal({
++    reviewId: created.review.id,
++    actor: { id: "mod-close-idem-1", roles: ["moderator"] },
++    appealId: opened.appeal.id,
++    resolution: "accepted",
++    idempotencyKey: "idem-appeal-close-idem-op-1",
++  });
++
++  assert.equal(firstClose.ok, true);
++  assert.equal(secondClose.ok, true);
++  assert.equal(secondClose.replay, true);
++});
++
+ test("editReview allows owner within edit window", () => {
+   const svc = new ReviewService();
+   const created = svc.createReview({
+@@ -497,6 +572,28 @@ test("fraud heuristics propagate configured threshold version", () => {
+   assert.equal(createdEvent.payload.fraudHeuristics.thresholdVersion, "anti_gaming_v2_2026-05-11");
+ });
+ 
++test("createReview uses upstream source-availability telemetry when provided", () => {
++  const svc = new ReviewService();
++  const created = svc.createReview({
++    idempotencyKey: "idem-source-availability-create-1",
++    serviceRequestId: "sr-source-availability-create-1",
++    reviewerUserId: "u-source-availability-create-1",
++    providerUserId: "p-source-availability-create-1",
++    rating: 5,
++    serviceCompletedAt: "2026-05-06T00:00:00.000Z",
++    reviewerMatchesParticipant: true,
++    sourceAvailability: { expected: 4, present: 2 },
++    now: "2026-05-07T00:00:00.000Z",
++  });
++
++  assert.equal(created.ok, true);
++  const event = svc.getEvents().at(-1);
++  assert.equal(event.payload.fraudHeuristics.s6Telemetry.sourcesExpected, 4);
++  assert.equal(event.payload.fraudHeuristics.s6Telemetry.sourcesPresent, 2);
++  assert.equal(event.payload.fraudHeuristics.s6Telemetry.completenessRatio, 0.5);
++  assert.equal(event.payload.fraudHeuristics.s6Telemetry.status, "partial");
++});
++
+ test("reportReview rejects unauthenticated actor", () => {
+   const svc = new ReviewService();
+   const created = svc.createReview({
+diff --git a/src/components/MobileReviewFlow.jsx b/src/components/MobileReviewFlow.jsx
+index 4754797..38e8f38 100644
+--- a/src/components/MobileReviewFlow.jsx
++++ b/src/components/MobileReviewFlow.jsx
+@@ -1,6 +1,7 @@
+ import React, { useEffect, useMemo, useRef, useState } from "react";
+ import "./MobileReviewFlow.css";
+ import {
++  normalizeModerationStatus,
+   REVIEW_MODERATION_STATUS,
+   deriveModerationStatus,
+   isLowConfidenceReview,
+@@ -103,6 +104,36 @@ function tagsForRating(rating) {
+   return TAGS_BY_RATING.high;
+ }
+ 
++function formatRelativeDate(value) {
++  if (!value) return "Reciente";
++  const parsed = new Date(value);
++  if (Number.isNaN(parsed.getTime())) return String(value);
++  const diffMs = Date.now() - parsed.getTime();
++  if (diffMs < 36e5) return "Hace menos de 1 hora";
++  if (diffMs < 864e5) return `Hace ${Math.max(1, Math.floor(diffMs / 36e5))} horas`;
++  return `Hace ${Math.max(1, Math.floor(diffMs / 864e5))} días`;
++}
++
++function normalizeReviewForUi(review, selectedProvider) {
++  const riskScore = Number(review?.riskScore);
++  const safeRiskScore = Number.isFinite(riskScore) ? Math.max(0, Math.min(100, Math.round(riskScore))) : 0;
++  const safeStatus = normalizeModerationStatus(review?.status) ?? deriveModerationStatus({ riskScore: safeRiskScore });
++  return {
++    id: review?.id ?? `rev-${Math.random().toString(36).slice(2, 10)}`,
++    author: review?.author ?? "Cliente",
++    provider: review?.provider ?? selectedProvider?.name ?? review?.providerUserId ?? "Prestador",
++    rating: Number.isFinite(Number(review?.rating)) ? Math.max(1, Math.min(5, Math.round(Number(review.rating)))) : 5,
++    verified: review?.verified !== false,
++    service: review?.service ?? "Servicio contratado",
++    createdAt: review?.createdAt && review.createdAt.includes("T") ? formatRelativeDate(review.createdAt) : (review?.createdAt ?? "Reciente"),
++    riskScore: safeRiskScore,
++    status: safeStatus,
++    tags: Array.isArray(review?.tags) ? review.tags : [],
++    comment: review?.comment ?? "",
++    providerResponse: review?.providerResponse ?? "Sin respuesta aún.",
++  };
++}
++
+ function StarRow({ value, onToggle, onKeyDown }) {
+   return (
+     <div className="stars" role="radiogroup" aria-label="Calificación" aria-describedby="rating-instructions">
+@@ -467,12 +498,17 @@ export default function MobileReviewFlow() {
+     async function loadReviews() {
+       setListState("loading");
+       setListWarning("");
++      if (!selectedProvider?.id) {
++        setReviews([]);
++        setListState("ready");
++        return;
++      }
+       if (!isMounted) return;
+       try {
+-        const response = await fetchReviews({ serviceId: "srv-8241", filter });
++        const response = await fetchReviews({ providerId: selectedProvider?.id });
+         if (!isMounted) return;
+         const items = Array.isArray(response?.items) ? response.items : [];
+-        setReviews(items);
++        setReviews(items.map((item) => normalizeReviewForUi(item, selectedProvider)));
+         setListState("ready");
+       } catch (_error) {
+         if (!isMounted) return;
+@@ -487,7 +523,7 @@ export default function MobileReviewFlow() {
+     return () => {
+       isMounted = false;
+     };
+-  }, [filter, reloadNonce]);
++  }, [filter, reloadNonce, selectedProvider?.id]);
+ 
+   useEffect(() => {
+     const assignment = getOrCreateReviewExperimentAssignment();
+@@ -496,19 +532,19 @@ export default function MobileReviewFlow() {
+ 
+   const helperText =
+     rating === 0
+-      ? "Elegí estrellas para continuar."
++      ? "Elegí de 1 a 5 estrellas para continuar."
+       : rating <= 2
+-        ? "Si querés, contanos qué pasó para ayudarte mejor."
++        ? "Si querés, contanos qué pasó. Tu comentario nos ayuda a mejorar."
+         : rating === 3
+-          ? "¿Qué podríamos mejorar?"
+-          : "¡Genial! ¿Qué te gustó más?";
++          ? "¿Qué se podría mejorar?"
++          : "¿Qué te gustó más?";
+ 
+   const trustState = useMemo(() => {
+     if (rating === 0) {
+       return {
+         tone: "neutral",
+         title: "Tu reseña fortalece la confianza del marketplace",
+-        message: "Cuando califiques, te mostramos si impacta directo en reputación o requiere revisión.",
++        message: "Cuando califiques, te mostramos si se publica de inmediato o si requiere revisión.",
+       };
+     }
+ 
+@@ -524,14 +560,14 @@ export default function MobileReviewFlow() {
+       return {
+         tone: "verified",
+         title: "Compra verificada con impacto completo",
+-        message: "Esta reseña se vincula al servicio contratado y fortalece la reputación pública del prestador.",
++        message: "Esta reseña se vincula al servicio contratado y aporta al perfil público del prestador.",
+       };
+     }
+ 
+     return {
+-      tone: "neutral",
+-      title: "Impacto parcial hasta verificar servicio",
+-      message: "La reseña queda visible pero con menor peso hasta completar validaciones de confianza.",
++        tone: "neutral",
++        title: "Impacto parcial hasta verificar servicio",
++        message: "La reseña queda visible, pero cuenta menos hasta que se verifique el servicio.",
+     };
+   }, [rating, selectedProvider?.verified]);
+ 
+@@ -575,8 +611,8 @@ export default function MobileReviewFlow() {
+     setIsSubmitting(true);
+     try {
+       const payload = {
+-        serviceId: activeServiceRequestId,
+-        providerId: selectedProvider?.id,
++        serviceRequestId: activeServiceRequestId,
++        providerUserId: selectedProvider?.id,
+         rating,
+         tags: selectedTags,
+         comment: comment.trim(),
+@@ -629,12 +665,12 @@ export default function MobileReviewFlow() {
+       setActiveServiceRequestId(serviceRequestId || "srv-8241");
+       setBookingSubmitted(true);
+       setBookingState("submitted");
+-      setLiveMessage("Solicitud de contratacion enviada");
++      setLiveMessage("Solicitud de contratación enviada.");
+     } catch (_error) {
+       setBookingState("error");
+       setBookingSubmitted(false);
+       setBookingError("No pudimos enviar la solicitud. Reintentá en unos segundos.");
+-      setLiveMessage("No pudimos enviar la solicitud de contratacion.");
++      setLiveMessage("No pudimos enviar la solicitud de contratación.");
+     }
+   };
+ 
+@@ -741,8 +777,8 @@ export default function MobileReviewFlow() {
+ 
+         <section className="mvp-block" aria-labelledby="discover-title">
+           <div className="section-head">
+-            <h2 id="discover-title">Descubri prestadores</h2>
+-            <p className="helper-text">Elegi una opcion con reputacion verificada y zona cercana.</p>
++            <h2 id="discover-title">Descubrí prestadores</h2>
++            <p className="helper-text">Elegí una opción con buena reputación y cerca de tu zona.</p>
+           </div>
+           <div className="booking-grid">
+             <label htmlFor="discovery-category">
+@@ -821,8 +857,8 @@ export default function MobileReviewFlow() {
+ 
+         <section className="mvp-block" aria-labelledby="booking-title">
+           <div className="section-head">
+-            <h2 id="booking-title">Contratacion simple</h2>
+-            <p className="helper-text">Reserva en dos pasos y deja trazabilidad para soporte y moderacion.</p>
++            <h2 id="booking-title">Contratación simple</h2>
++            <p className="helper-text">Reservá en dos pasos. Si hay un problema, soporte puede ayudarte mejor.</p>
+           </div>
+           <form className="booking-form" onSubmit={handleBookingSubmit}>
+             <p className="meta-row">
+@@ -872,18 +908,18 @@ export default function MobileReviewFlow() {
+               />
+             </label>
+             <button className="submit-button" type="submit" disabled={!canBook || bookingState === "submitting"}>
+-              Solicitar contratacion
++              Solicitar contratación
+             </button>
+             {!canBook ? <p className="field-note">Seleccioná una opción disponible para poder contratar.</p> : null}
+             {bookingSubmitted ? (
+               <p className="confirm">
+-                Solicitud enviada. {selectedProvider?.name || "El prestador"} recibio tu pedido para {requestedDate} a las {requestedTime}.
++                Solicitud enviada. {selectedProvider?.name || "El prestador"} recibió tu pedido para {requestedDate} a las {requestedTime}.
+               </p>
+             ) : null}
+             {bookingState === "error" ? <p className="error-box" role="alert">{bookingError}</p> : null}
+             {activeServiceRequestId ? (
+               <p className="field-note">
+-                Id de solicitud activa: <strong>{activeServiceRequestId}</strong>
++                ID de solicitud activa: <strong>{activeServiceRequestId}</strong>
+               </p>
+             ) : null}
+           </form>
+@@ -897,7 +933,7 @@ export default function MobileReviewFlow() {
+               Tocá una estrella para calificar. Si querés cambiar, tocá otra.
+             </p>
+             <p id="rating-instructions" className="sr-only">
+-              Usá flechas para ajustar la calificación y tecla 0 para limpiar selección.
++              Usá las flechas para ajustar la calificación y la tecla 0 para limpiar la selección.
+             </p>
+           </fieldset>
+ 
+@@ -959,9 +995,9 @@ export default function MobileReviewFlow() {
+           <button className="submit-button" type="submit" disabled={!rating || isSubmitting || !canReview}>
+             {isSubmitting ? "Enviando..." : "Enviar reseña"}
+           </button>
+-          {!canReview ? <p className="field-note">Primero completá una contratación válida para habilitar la reseña verificada.</p> : null}
++          {!canReview ? <p className="field-note">Primero completá una contratación para habilitar la reseña verificada.</p> : null}
+ 
+-          {submitted && <p className="confirm">Gracias. Tu reseña fue enviada. Puede pasar por validación antes de impactar el perfil.</p>}
++          {submitted && <p className="confirm">Gracias. Tu reseña fue enviada. Puede pasar por validación antes de publicarse.</p>}
+         </form>
+ 
+         <section className="reviews-feed" aria-labelledby="reviews-feed-title">
+@@ -1026,7 +1062,7 @@ export default function MobileReviewFlow() {
+             </div>
+           ) : null}
+ 
+-          {listState === "ready" && filteredReviews.length === 0 && <p className="helper-text">No hay reseñas para este filtro.</p>}
++          {listState === "ready" && filteredReviews.length === 0 && <p className="helper-text">Todavía no hay reseñas para este filtro.</p>}
+ 
+           {listState === "ready" &&
+             filteredReviews.map((review) => (
+diff --git a/src/components/MobileReviewFlow.test.jsx b/src/components/MobileReviewFlow.test.jsx
+index 4b820c2..b389bd4 100644
+--- a/src/components/MobileReviewFlow.test.jsx
++++ b/src/components/MobileReviewFlow.test.jsx
+@@ -22,8 +22,8 @@ vi.mock("../analytics/reviewExperimentTracking", () => ({
+ 
+ vi.mock("../api/reviewsApi", () => ({
+   fetchReviews: (...args) => mockFetchReviews(...args),
+-  createReview: vi.fn().mockResolvedValue({ review: { status: "verified" } }),
+-  reportReview: vi.fn().mockResolvedValue({ status: "under_review", riskScore: 82 }),
++  createReview: vi.fn().mockResolvedValue({ review: { status: "verificada" } }),
++  reportReview: vi.fn().mockResolvedValue({ status: "en_revision", riskScore: 82 }),
+   respondToReview: vi.fn().mockResolvedValue({ providerResponse: "Gracias por tu comentario." }),
+ }));
+ 
+@@ -64,7 +64,7 @@ describe("MobileReviewFlow", () => {
+     mockFetchReviews
+       .mockRejectedValueOnce(new Error("temporary_error"))
+       .mockRejectedValueOnce(new Error("temporary_error"))
+-      .mockResolvedValueOnce({ items: [{ id: "rev_1abcde", provider: "Gas Norte", service: "Revision", createdAt: "Hoy", rating: 5, verified: true, riskScore: 10, status: "verified", tags: ["Excelente"], comment: "Perfecto", providerResponse: "Gracias" }] });
++      .mockResolvedValueOnce({ items: [{ id: "rev_1abcde", provider: "Gas Norte", service: "Revision", createdAt: "Hoy", rating: 5, verified: true, riskScore: 10, status: "verificada", tags: ["Excelente"], comment: "Perfecto", providerResponse: "Gracias" }] });
+ 
+     render(<MobileReviewFlow />);
+     const criticalFilter = await screen.findByRole("button", { name: "1-2★" });
+@@ -73,7 +73,7 @@ describe("MobileReviewFlow", () => {
+     const retry = await screen.findByRole("button", { name: "Reintentar" });
+     await userEvent.click(retry);
+ 
+-    await waitFor(() => expect(mockFetchReviews).toHaveBeenLastCalledWith({ serviceId: "srv-8241", filter: "critical" }));
++    await waitFor(() => expect(mockFetchReviews).toHaveBeenLastCalledWith({ providerId: "prov-1" }));
+   });
+ 
+   it("supports keyboard control for star rating", async () => {

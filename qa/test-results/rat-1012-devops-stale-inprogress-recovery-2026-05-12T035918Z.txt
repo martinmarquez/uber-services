@@ -1,0 +1,67 @@
+RAT-1012 stale in_progress recovery
+timestamp_utc=2026-05-12T035918Z
+candidate_count=3
+---
+issue=RAT-401 age_hours=6
+{"id":"b4e50f21-d154-4cc8-a2bc-1c529a332e8f","companyId":"ecee6d4c-08bc-4e67-af62-5f6eb884f553","projectId":"0c9e2fdf-98b3-447a-bf19-0c57eb89e933","projectWorkspaceId":"a95345bf-0c61-4cb8-af2d-6581a908b8ee","goalId":null,"parentId":"c9e0951d-b15b-412c-86d9-630a81be3509","title":"RAT-23E Investigate repeated done->in_progress transition on closed issue","description":"Observed in multiple heartbeats: parent issue `RAT-23` re-enters `in_progress` on wake (`issue_status_changed` / `process_lost_retry`) without new comments or scope changes.
+
+Why this matters:
+- Causes noisy retries and non-actionable execution churn.
+
+Requested work (Platform/CTO):
+1. Identify trigger path that flips closed issues back to `in_progress`.
+2. Patch runtime/state machine so closed issues remain `done` unless explicit user/agent reopen action.
+3. Add regression check for repeated wake loops on completed issues.
+
+Done criteria:
+- Root cause documented.
+- Fix merged/deployed.
+- `RAT-23` no longer receives automatic reopen transitions.","status":"blocked","priority":"high","assigneeAgentId":"8dd474b9-148d-4918-9f17-34a47b499e08","assigneeUserId":null,"checkoutRunId":null,"executionRunId":null,"executionAgentNameKey":null,"executionLockedAt":null,"createdByAgentId":"d5f037cd-6a4f-485b-b342-4f94fa25c06c","createdByUserId":null,"issueNumber":401,"identifier":"RAT-401","originKind":"manual","originId":null,"originRunId":null,"originFingerprint":"default","requestDepth":0,"billingCode":null,"assigneeAdapterOverrides":null,"executionPolicy":null,"executionState":null,"executionWorkspaceId":"dc7adbc6-6c02-4c14-b17d-b155eb0fbbf8","executionWorkspacePreference":"reuse_existing","executionWorkspaceSettings":{"mode":"shared_workspace"},"startedAt":"2026-05-11T21:17:26.979Z","completedAt":null,"cancelledAt":null,"hiddenAt":null,"createdAt":"2026-05-11T03:56:03.963Z","updatedAt":"2026-05-12T03:59:18.336Z","labels":[],"labelIds":[],"comment":null}
+HTTP_STATUS:200
+{"id":"87449af1-915f-4c0e-8a2e-dd9a85417949","companyId":"ecee6d4c-08bc-4e67-af62-5f6eb884f553","issueId":"b4e50f21-d154-4cc8-a2bc-1c529a332e8f","authorAgentId":"8dd474b9-148d-4918-9f17-34a47b499e08","authorUserId":null,"createdByRunId":"85f89148-cccd-4e33-87c9-b795f0e585bb","body":"Wave2 stale in_progress recovery executed on 2026-05-12 (UTC): this issue had no active/execution run for >=2h while marked in_progress.
+
+Transition applied: in_progress -> blocked.
+Unblock owner: issue assignee (DevOps lane) unless reassigned by board.
+Unblock action: re-checkout with a dated next execution step, or close with terminal evidence if already complete.","createdAt":"2026-05-12T03:59:18.366Z","updatedAt":"2026-05-12T03:59:18.366Z"}
+HTTP_STATUS:201
+---
+issue=RAT-723 age_hours=6
+{"id":"5f1e4ba9-a908-49ff-a70e-3ade6faccd6e","companyId":"ecee6d4c-08bc-4e67-af62-5f6eb884f553","projectId":"0c9e2fdf-98b3-447a-bf19-0c57eb89e933","projectWorkspaceId":"d72212cc-123e-4450-a9ab-a44642df7d9c","goalId":null,"parentId":"73142872-80b9-4159-84c2-f5b5d76d4112","title":"Reliability fix: auto-resolve detached heartbeat runs stuck in running state","description":"Classification outcome from [RAT-388](/RAT/issues/RAT-388): actionable reliability incident (not a false positive).
+
+Observed evidence:
+- Run [a388ed24-1e25-4d58-afb6-4625a325036b](/RAT/agents/8dd474b9-148d-4918-9f17-34a47b499e08/runs/a388ed24-1e25-4d58-afb6-4625a325036b) remains `running` with `errorCode=process_detached`.
+- Last output is still 2026-05-11T02:49:28.103Z with no finish/cancel timestamps.
+
+Acceptance criteria:
+1. Detached runs (`process_detached`) with stale output are transitioned to a terminal state (`cancelled` or `failed`) by watchdog/recovery logic.
+2. Transition emits durable run + activity logs including reason and timestamp.
+3. Stale-run review issue creation is deduplicated by origin fingerprint and does not create repeated unowned noise.
+4. Tests cover detached-process + stale-output transition path.
+5. Operator runbook documents manual fallback when automatic transition cannot execute.
+
+Dependency:
+- Blocked by [RAT-722](/RAT/issues/RAT-722) operational cancellation/re-wake for the currently stuck run.","status":"blocked","priority":"high","assigneeAgentId":"8dd474b9-148d-4918-9f17-34a47b499e08","assigneeUserId":null,"checkoutRunId":null,"executionRunId":null,"executionAgentNameKey":null,"executionLockedAt":null,"createdByAgentId":"0724f3ff-7732-4f6f-8220-7c4153c7c632","createdByUserId":null,"issueNumber":723,"identifier":"RAT-723","originKind":"manual","originId":null,"originRunId":null,"originFingerprint":"default","requestDepth":0,"billingCode":null,"assigneeAdapterOverrides":null,"executionPolicy":null,"executionState":null,"executionWorkspaceId":"f38b1b35-36b8-4e6f-be02-e926f61a13ce","executionWorkspacePreference":"reuse_existing","executionWorkspaceSettings":{"mode":"shared_workspace"},"startedAt":"2026-05-11T21:17:48.060Z","completedAt":null,"cancelledAt":null,"hiddenAt":null,"createdAt":"2026-05-11T09:38:47.329Z","updatedAt":"2026-05-12T03:59:18.392Z","labels":[],"labelIds":[],"comment":null}
+HTTP_STATUS:200
+{"id":"128c697c-5d0d-4ee7-b60f-38dde7d4925b","companyId":"ecee6d4c-08bc-4e67-af62-5f6eb884f553","issueId":"5f1e4ba9-a908-49ff-a70e-3ade6faccd6e","authorAgentId":"8dd474b9-148d-4918-9f17-34a47b499e08","authorUserId":null,"createdByRunId":"85f89148-cccd-4e33-87c9-b795f0e585bb","body":"Wave2 stale in_progress recovery executed on 2026-05-12 (UTC): this issue had no active/execution run for >=2h while marked in_progress.
+
+Transition applied: in_progress -> blocked.
+Unblock owner: issue assignee (DevOps lane) unless reassigned by board.
+Unblock action: re-checkout with a dated next execution step, or close with terminal evidence if already complete.","createdAt":"2026-05-12T03:59:18.438Z","updatedAt":"2026-05-12T03:59:18.438Z"}
+HTTP_STATUS:201
+---
+issue=RAT-713 age_hours=6
+{"id":"0411c586-c690-405c-bd4d-056d1c27bdca","companyId":"ecee6d4c-08bc-4e67-af62-5f6eb884f553","projectId":null,"projectWorkspaceId":"d72212cc-123e-4450-a9ab-a44642df7d9c","goalId":null,"parentId":"8cf78237-c6d9-4f25-a875-5d51967dfe97","title":"DevOps sweep: clear blocked needs_attention cluster (9 issues)","description":"Scope: all DevOps-owned issues currently `blocked` with `blockerAttention=needs_attention` in the RAT-706 board snapshot (2026-05-11).
+
+Required actions per issue:
+1) Resolve infra/runtime blockers into explicit `blockedByIssueIds` with upstream owner.
+2) Where infra is ready, transition to actionable state and publish execution window.
+3) Escalate policy or product-decision blockers back to PM/CEO with decision request.
+
+Done when: the cluster has no ambiguous blockers and each issue has a concrete path to completion.","status":"blocked","priority":"high","assigneeAgentId":"8dd474b9-148d-4918-9f17-34a47b499e08","assigneeUserId":null,"checkoutRunId":null,"executionRunId":null,"executionAgentNameKey":null,"executionLockedAt":null,"createdByAgentId":"0724f3ff-7732-4f6f-8220-7c4153c7c632","createdByUserId":null,"issueNumber":713,"identifier":"RAT-713","originKind":"manual","originId":null,"originRunId":null,"originFingerprint":"default","requestDepth":0,"billingCode":null,"assigneeAdapterOverrides":null,"executionPolicy":null,"executionState":null,"executionWorkspaceId":"ca073a40-b3c6-44ca-99e8-bc603495661c","executionWorkspacePreference":"reuse_existing","executionWorkspaceSettings":{"mode":"shared_workspace"},"startedAt":"2026-05-11T21:17:29.012Z","completedAt":null,"cancelledAt":null,"hiddenAt":null,"createdAt":"2026-05-11T09:33:44.702Z","updatedAt":"2026-05-12T03:59:18.514Z","labels":[],"labelIds":[],"comment":null}
+HTTP_STATUS:200
+{"id":"5d93a5da-d276-4f76-a101-e3101b39e468","companyId":"ecee6d4c-08bc-4e67-af62-5f6eb884f553","issueId":"0411c586-c690-405c-bd4d-056d1c27bdca","authorAgentId":"8dd474b9-148d-4918-9f17-34a47b499e08","authorUserId":null,"createdByRunId":"85f89148-cccd-4e33-87c9-b795f0e585bb","body":"Wave2 stale in_progress recovery executed on 2026-05-12 (UTC): this issue had no active/execution run for >=2h while marked in_progress.
+
+Transition applied: in_progress -> blocked.
+Unblock owner: issue assignee (DevOps lane) unless reassigned by board.
+Unblock action: re-checkout with a dated next execution step, or close with terminal evidence if already complete.","createdAt":"2026-05-12T03:59:18.635Z","updatedAt":"2026-05-12T03:59:18.635Z"}
+HTTP_STATUS:201

@@ -1,0 +1,12 @@
+RAT-721 RAT-388 run-lock and ownership normalization check
+repo: /Users/martinmarquez/uber-services
+snapshot_file=qa/test-results/rat-709-cto-cluster-snapshot-2026-05-11T09:36:13Z.json
+rat388_status=blocked
+rat388_assignee=8dd474b9-148d-4918-9f17-34a47b499e08
+rat388_checkoutRunId=
+rat388_executionRunId=
+rat388_executionLockedAt=
+rat388_activeRunStatus=
+rat388_updatedAt=2026-05-11T09:31:22.806Z
+RESULT=READY_RAT388_RUNLOCK_CLEARED
+DETAIL=RAT-388 is blocked under DevOps with no run-lock fields

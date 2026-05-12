@@ -1,0 +1,4 @@
+STATUS=absent
+DETAIL=No control-plane /api/issues lifecycle runtime signatures found in server/*
+UNBLOCK_OWNER=Control-plane lifecycle runtime maintainer
+UNBLOCK_ACTION=Implement scoped resume gate in owning /api/issues transition + checkout/wake handlers and attach replay evidence

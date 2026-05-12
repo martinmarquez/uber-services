@@ -1,0 +1,23 @@
+RAT-800 analytics cycle-safe edge normalization check
+scope_issue_count=11
+normalized_edge_count=15
+has_cycle=false
+cycle_issue_ids=
+-- normalized edges --
+RAT-631	RAT-444
+RAT-84	RAT-444
+RAT-122	RAT-84
+RAT-130	RAT-122
+RAT-123	RAT-130
+RAT-142	RAT-130
+RAT-143	RAT-123
+RAT-150	RAT-142
+RAT-316	RAT-142
+RAT-316	RAT-150
+RAT-618	RAT-142
+RAT-618	RAT-143
+RAT-618	RAT-150
+RAT-618	RAT-316
+RAT-618	RAT-631
+RESULT=READY_CYCLE_SAFE_EDGES
+DETAIL=RAT-800 scope edge set is cycle-safe and ready for blockedByIssueIds writeback

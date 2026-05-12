@@ -142,8 +142,17 @@ export class ReviewService {
     const decisionError = validateModerationDecision(input.decision);
     if (decisionError) return { ok: false, code: decisionError };
 
+    const decisionTs = input.now ?? new Date().toISOString();
+    const decisionId = randomId("dec");
+    const incidentIntegrity = buildIncidentIntegrity({
+      decision: input.decision,
+      actor: input.actor,
+      decisionId,
+      decisionTs,
+    });
+
     review.status = input.toStatus;
-    review.updatedAt = input.now ?? new Date().toISOString();
+    review.updatedAt = decisionTs;
     this.recomputeProviderAggregate(review.providerUserId);
     if (input.decision?.reasonCode && input.toStatus !== "verificada") {
       this.persistReviewTag({
@@ -170,6 +179,7 @@ export class ReviewService {
           toStatus: input.toStatus,
           reasonCode: input.decision.reasonCode,
           severity: input.decision.severity,
+          incidentIntegrity,
         }),
         fraudHeuristics: buildFraudHeuristics({
           reviewId: review.id,
@@ -193,7 +203,11 @@ export class ReviewService {
         idempotencyKey: `${input.idempotencyKey}:removed`,
         actorType: "moderator",
         actorId: input.actor.id,
-        payload: { reasonCode: input.decision.reasonCode, severity: input.decision.severity },
+        payload: {
+          reasonCode: input.decision.reasonCode,
+          severity: input.decision.severity,
+          incidentIntegrity,
+        },
       });
     }
 
@@ -671,10 +685,15 @@ function buildFraudHeuristics({
   s6PartialStreakByReview = null,
 }) {
   const s6Telemetry = buildS6Telemetry({ reasonCode, sourceAvailability });
+  const reliabilityWeight = toReliabilityWeight(riskScore);
+  const weightedVelocityCount = round4((Number(velocityCount) || 0) * reliabilityWeight);
   return {
     thresholdVersion,
     riskBand: toRiskBand(riskScore),
-    velocityBand: toVelocityBand(velocityCount, velocityLimit),
+    velocityBand: toVelocityBand(weightedVelocityCount, velocityLimit),
+    velocityRawCount: Number(velocityCount) || 0,
+    velocityWeightedCount: weightedVelocityCount,
+    velocityReliabilityWeight: reliabilityWeight,
     s6Telemetry,
     s6Alert: buildS6Alert({
       reviewId,
@@ -754,12 +773,32 @@ function normalizeSourceAvailability(input) {
   };
 }
 
-function buildModerationOutcome({ toStatus, reasonCode, severity }) {
+function buildModerationOutcome({ toStatus, reasonCode, severity, incidentIntegrity }) {
   return {
     toStatus,
     excludedFromPublicScore: toStatus !== "verificada",
     isFraudConfirmed: isFraudReason(reasonCode),
     severity,
+    incidentIntegrity,
+    eligibleForIncidentScore: incidentIntegrity.eligibleForIncidentScore,
+  };
+}
+
+function buildIncidentIntegrity({ decision, actor, decisionId, decisionTs }) {
+  const source = decision?.incident?.source === "trusted" ? "trusted" : "untrusted";
+  const state = decision?.incident?.state ?? "pending";
+  const actorScope = canModerate(actor) ? "authorized" : "unauthorized";
+  const eligibleForIncidentScore = source === "trusted" && state === "validated" && actorScope === "authorized";
+
+  return {
+    source,
+    state,
+    actorScope,
+    eligibleForIncidentScore,
+    sourceEventId: decision?.incident?.sourceEventId ?? null,
+    decisionId,
+    reviewerId: actor?.id ?? null,
+    decisionTs,
   };
 }
 
@@ -784,6 +823,11 @@ function toVelocityBand(count, limit) {
   if (c > l) return "burst";
   if (c > Math.floor(l * 0.6)) return "elevated";
   return "normal";
+}
+
+function toReliabilityWeight(riskScore) {
+  const risk = clamp(Number(riskScore) || 0, 0, 100);
+  return round4(clamp(1 - risk / 100, 0.1, 1));
 }
 
 function isFraudReason(reasonCode) {

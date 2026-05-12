@@ -1,0 +1,23 @@
+{
+  "issue": "RAT-469",
+  "capturedAt": "2026-05-11T08:29:00Z",
+  "heartbeatReason": "run_liveness_continuation",
+  "statusPolicy": "non_executing_duplicate_lane",
+  "canonicalRouting": {
+    "implementation": "RAT-568",
+    "sweep": "RAT-594",
+    "qaGate": "RAT-383"
+  },
+  "localProbe": {
+    "command": "bash tools/guardrails/check-rat-413-control-plane-runtime-surface.sh",
+    "result": "BLOCKED_WRONG_REPO",
+    "detail": "No control-plane issue lifecycle runtime signatures found in server/*"
+  },
+  "reopenGate": "fresh RAT-99-specific drift evidence only after RAT-568 implementation and RAT-383 completion",
+  "artifactHashes": {
+    "rat469InvestigationMd": "b1c2d9c8577a4fb1e723f44573648a9eb4011a51ad9490b2a8a24807033119a6",
+    "rat469ClosureReceiptMd": "b58e59cda824c9e6e59888720fca7b0585edc363905e558aa0a704e2adf136bf",
+    "rat568CanonicalMd": "90709499b9fbe07f1de47543ba60a47394b285b98ef6506f7a1c0e38c5b8c731",
+    "rat591SweepMd": "3ae919428b29480dbd9f2abfdec7a5e16d313baaa56064d1dab98c3c6d2b7889"
+  }
+}

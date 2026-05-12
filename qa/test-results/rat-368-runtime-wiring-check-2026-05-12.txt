@@ -1,0 +1,4 @@
+RAT-368 runtime wiring acceptance check
+repo: /Users/martinmarquez/uber-services
+RESULT=BLOCKED_WRONG_REPO
+DETAIL=No control-plane lifecycle runtime signatures found in server/*

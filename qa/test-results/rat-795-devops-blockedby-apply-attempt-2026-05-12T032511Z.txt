@@ -1,0 +1,7 @@
+RAT-795 blocker-edge apply attempt
+date=2026-05-12T03:25:11Z
+snapshot=qa/test-results/rat-709-cto-cluster-snapshot-2026-05-11T21:23:01Z.json
+company_id=ecee6d4c-08bc-4e67-af62-5f6eb884f553
+dry_run=0
+RESULT=BLOCKED_MISSING_CONTROL_PLANE_CREDS
+DETAIL=PAPERCLIP_BASE_URL and PAPERCLIP_API_TOKEN are required for live mutation mode

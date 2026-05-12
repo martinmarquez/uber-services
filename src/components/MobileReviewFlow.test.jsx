@@ -6,6 +6,7 @@ import MobileReviewFlow from "./MobileReviewFlow";
 const mockFetchReviews = vi.fn();
 const mockDiscoverProviders = vi.fn();
 const mockCreateReview = vi.fn();
+const mockAppealReview = vi.fn();
 
 vi.mock("../analytics/reviewExperimentTracking", () => ({
   getOrCreateReviewExperimentAssignment: () => ({
@@ -24,6 +25,7 @@ vi.mock("../analytics/reviewExperimentTracking", () => ({
 vi.mock("../api/reviewsApi", () => ({
   fetchReviews: (...args) => mockFetchReviews(...args),
   createReview: (...args) => mockCreateReview(...args),
+  appealReview: (...args) => mockAppealReview(...args),
   reportReview: vi.fn().mockResolvedValue({ status: "en_revision", riskScore: 82 }),
   respondToReview: vi.fn().mockResolvedValue({ providerResponse: "Gracias por tu comentario." }),
 }));
@@ -36,6 +38,7 @@ vi.mock("../api/discoveryBookingApi", () => ({
 describe("MobileReviewFlow", () => {
   beforeEach(() => {
     mockCreateReview.mockResolvedValue({ review: { status: "verificada" } });
+    mockAppealReview.mockResolvedValue({ ok: true, appeal: { id: "apl-1", status: "open" } });
     mockDiscoverProviders.mockResolvedValue({
       providers: [
         {
@@ -89,12 +92,24 @@ describe("MobileReviewFlow", () => {
 
   it("supports keyboard control for star rating", async () => {
     render(<MobileReviewFlow />);
+    expect(
+      screen.getByText(
+        "Usá las flechas para ajustar la calificación. La tecla Inicio va a 1 estrella, Fin a 5 y 0 limpia la selección.",
+      ),
+    ).toBeInTheDocument();
     const oneStar = await screen.findByRole("radio", { name: "1 estrella" });
     oneStar.focus();
     fireEvent.keyDown(oneStar, { key: "ArrowRight" });
 
     const twoStar = screen.getByRole("radio", { name: "2 estrellas" });
     expect(twoStar).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.keyDown(twoStar, { key: "End" });
+    const fiveStar = screen.getByRole("radio", { name: "5 estrellas" });
+    expect(fiveStar).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.keyDown(fiveStar, { key: "Home" });
+    expect(oneStar).toHaveAttribute("aria-checked", "true");
   });
 
   it("shows failed submission feedback when create review API fails", async () => {
@@ -109,5 +124,198 @@ describe("MobileReviewFlow", () => {
     await waitFor(() => {
       expect(screen.getByText("No pudimos enviar la reseña. Reintentá en unos segundos.")).toBeInTheDocument();
     });
+  });
+
+  it("closes report modal with Escape and restores focus to invoking control", async () => {
+    mockFetchReviews.mockResolvedValueOnce({
+      items: [
+        {
+          id: "rev_1abcde",
+          provider: "Gas Norte",
+          service: "Revision",
+          createdAt: "2026-05-11T08:00:00.000Z",
+          rating: 4,
+          verified: true,
+          riskScore: 10,
+          status: "verificada",
+          tags: ["Excelente"],
+          comment: "Perfecto",
+          providerResponse: "Gracias",
+        },
+      ],
+    });
+    render(<MobileReviewFlow />);
+
+    const reportButton = await screen.findByRole("button", { name: "Reportar reseña de Gas Norte" });
+    await userEvent.click(reportButton);
+    expect(screen.getByRole("dialog", { name: "Reportar reseña" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Reportar reseña" })).not.toBeInTheDocument());
+    expect(reportButton).toHaveFocus();
+  });
+
+  it("traps keyboard focus inside report modal", async () => {
+    mockFetchReviews.mockResolvedValueOnce({
+      items: [
+        {
+          id: "rev_2abcde",
+          provider: "Gas Norte",
+          service: "Revision",
+          createdAt: "2026-05-11T08:00:00.000Z",
+          rating: 4,
+          verified: true,
+          riskScore: 10,
+          status: "verificada",
+          tags: ["Excelente"],
+          comment: "Perfecto",
+          providerResponse: "Gracias",
+        },
+      ],
+    });
+    render(<MobileReviewFlow />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Reportar reseña de Gas Norte" }));
+    const sendReportButton = screen.getByRole("button", { name: "Enviar reporte" });
+    sendReportButton.focus();
+
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(screen.getByRole("combobox", { name: "Motivo" })).toHaveFocus();
+  });
+
+  it("traps keyboard focus inside respond modal and restores focus on close", async () => {
+    mockFetchReviews.mockResolvedValueOnce({
+      items: [
+        {
+          id: "rev_3abcde",
+          provider: "Gas Norte",
+          service: "Revision",
+          createdAt: "2026-05-11T08:00:00.000Z",
+          rating: 4,
+          verified: true,
+          riskScore: 10,
+          status: "verificada",
+          tags: ["Excelente"],
+          comment: "Perfecto",
+          providerResponse: "Gracias",
+        },
+      ],
+    });
+    render(<MobileReviewFlow />);
+
+    const respondButton = await screen.findByRole("button", { name: "Responder actualización de Gas Norte" });
+    await userEvent.click(respondButton);
+
+    const responseInput = screen.getByRole("textbox", { name: "Tu respuesta (visible en la reseña)" });
+    await userEvent.type(responseInput, "Gracias por responder");
+    const sendResponseButton = screen.getByRole("button", { name: "Enviar respuesta" });
+    sendResponseButton.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(responseInput).toHaveFocus();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Responder al prestador" })).not.toBeInTheDocument());
+    expect(respondButton).toHaveFocus();
+  });
+
+  it("keeps report/respond dialogs mutually exclusive through a singleton modal controller", async () => {
+    mockFetchReviews.mockResolvedValueOnce({
+      items: [
+        {
+          id: "rev_4abcde",
+          provider: "Gas Norte",
+          service: "Revision",
+          createdAt: "2026-05-11T08:00:00.000Z",
+          rating: 4,
+          verified: true,
+          riskScore: 10,
+          status: "verificada",
+          tags: ["Excelente"],
+          comment: "Perfecto",
+          providerResponse: "Gracias",
+        },
+      ],
+    });
+    render(<MobileReviewFlow />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Reportar reseña de Gas Norte" }));
+    expect(screen.getByRole("dialog", { name: "Reportar reseña" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Responder al prestador" })).not.toBeInTheDocument();
+  });
+
+  it("maps runtime taxonomy alias under_review to En revision badge", async () => {
+    mockFetchReviews.mockResolvedValueOnce({
+      items: [
+        {
+          id: "rev_5abcde",
+          provider: "Gas Norte",
+          service: "Revision",
+          createdAt: "2026-05-11T08:00:00.000Z",
+          rating: 4,
+          verified: true,
+          riskScore: 10,
+          status: "under_review",
+          tags: ["Excelente"],
+          comment: "Perfecto",
+          providerResponse: "Gracias",
+        },
+      ],
+    });
+    render(<MobileReviewFlow />);
+
+    expect(await screen.findByText("En revision")).toBeInTheDocument();
+  });
+
+  it("shows Iniciar apelacion CTA only for no_recomendada and submits appeal", async () => {
+    mockFetchReviews.mockResolvedValueOnce({
+      items: [
+        {
+          id: "rev_6abcde",
+          provider: "Gas Norte",
+          service: "Revision",
+          createdAt: "2026-05-11T08:00:00.000Z",
+          rating: 2,
+          verified: true,
+          riskScore: 82,
+          status: "no_recomendada",
+          tags: ["Calidad baja"],
+          comment: "No cumplió",
+          providerResponse: "Queremos revisar",
+        },
+      ],
+    });
+    render(<MobileReviewFlow />);
+
+    const appealButton = await screen.findByRole("button", { name: "Iniciar apelacion de reseña de Gas Norte" });
+    await userEvent.click(appealButton);
+
+    await waitFor(() => expect(mockAppealReview).toHaveBeenCalledWith(
+      "rev_6abcde",
+      expect.objectContaining({ note: expect.any(String), idempotencyKey: expect.stringContaining("appeal-") }),
+    ));
+  });
+
+  it("does not show appeal CTA for en_revision", async () => {
+    mockFetchReviews.mockResolvedValueOnce({
+      items: [
+        {
+          id: "rev_7abcde",
+          provider: "Gas Norte",
+          service: "Revision",
+          createdAt: "2026-05-11T08:00:00.000Z",
+          rating: 2,
+          verified: true,
+          riskScore: 86,
+          status: "en_revision",
+          tags: ["Calidad baja"],
+          comment: "No cumplió",
+          providerResponse: "Queremos revisar",
+        },
+      ],
+    });
+    render(<MobileReviewFlow />);
+
+    expect(await screen.findByText("En revision")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Iniciar apelacion de reseña de Gas Norte" })).not.toBeInTheDocument();
   });
 });

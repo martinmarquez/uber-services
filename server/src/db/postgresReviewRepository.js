@@ -130,6 +130,56 @@ export class PostgresReviewRepository {
     `);
   }
 
+  createAppeal(appeal, options = {}) {
+    const now = options.now ?? appeal.createdAt ?? new Date().toISOString();
+    const resume = options.resume === true;
+    const cooldownMs = Number(options.appealReopenCooldownMs ?? 24 * 60 * 60 * 1000);
+    const active = this.queryJson(`
+      select row_to_json(t) as row
+      from (
+        select id::text as id
+        from review_appeals
+        where review_id = ${lit(appeal.reviewId)}::uuid and status = 'queued'
+        limit 1
+      ) t
+    `);
+    if (active?.id) throw appealConstraint("appeal_already_open");
+
+    const latestClosed = this.queryJson(`
+      select row_to_json(t) as row
+      from (
+        select resolved_at::text as "closedAt"
+        from review_appeals
+        where review_id = ${lit(appeal.reviewId)}::uuid and resolved_at is not null
+        order by resolved_at desc
+        limit 1
+      ) t
+    `);
+    if (latestClosed?.closedAt && !resume) throw appealConstraint("appeal_resume_required");
+    if (latestClosed?.closedAt && inCooldown(latestClosed.closedAt, now, cooldownMs)) {
+      throw appealConstraint("appeal_cooldown_active");
+    }
+
+    try {
+      this.exec(`
+        insert into review_appeals (
+          id, review_id, appellant_user_id, note, status, created_at, resolved_at
+        ) values (
+          ${lit(appeal.id)}::uuid,
+          ${lit(appeal.reviewId)}::uuid,
+          ${lit(appeal.actorId)},
+          ${lit(appeal.note)},
+          ${lit(toAppealStatus(appeal.status))},
+          ${lit(appeal.createdAt)}::timestamptz,
+          ${nullable(appeal.closedAt)}::timestamptz
+        )
+      `);
+    } catch (error) {
+      if (isPostgresOpenAppealUniqueViolation(error)) throw appealConstraint("appeal_already_open");
+      throw error;
+    }
+  }
+
   listAppealsByReviewId(reviewId) {
     return this.queryJsonArray(`
       select row_to_json(t) as row
@@ -368,4 +418,22 @@ function toAppealStatus(status) {
 function fromAppealStatus(status) {
   if (status === "resolved" || status === "rejected") return "closed";
   return "open";
+}
+
+function inCooldown(closedAt, now, cooldownMs) {
+  const closedAtMs = new Date(closedAt).getTime();
+  const nowMs = new Date(now).getTime();
+  if (Number.isNaN(closedAtMs) || Number.isNaN(nowMs)) return false;
+  return nowMs - closedAtMs < cooldownMs;
+}
+
+function appealConstraint(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+function isPostgresOpenAppealUniqueViolation(error) {
+  const stderr = String(error?.stderr ?? "");
+  return stderr.includes("idx_review_appeals_single_open");
 }

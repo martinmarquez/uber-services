@@ -1,0 +1,29 @@
+RAT-795 DevOps blocked queue unblock normalization check
+snapshot: qa/test-results/rat-709-cto-cluster-snapshot-2026-05-11T09:36:13Z.json
+agent: 8dd474b9-148d-4918-9f17-34a47b499e08
+-- blocked needs_attention entries --
+RAT-691	RAT-554 exception shard: normalize remaining blockers for owner 8dd474b9	[]	2026-05-11T09:31:36.089Z
+RAT-388	Review silent active run for DevOps Engineer	[]	2026-05-11T09:31:22.806Z
+RAT-392	Staging/Production actor-signing rollout evidence for RAT-134	[]	2026-05-11T09:31:22.634Z
+RAT-659	Ownership correction batch B: runtime workspace binding route	[]	2026-05-11T09:28:37.014Z
+RAT-632	Ownership correction execution: route RAT-292 runtime workspace bind to DevOps	[]	2026-05-11T09:28:36.921Z
+RAT-568	Control-plane: enforce done->in_progress reopen guard with scoped-input gate	[]	2026-05-11T09:02:43.638Z
+RAT-646	RAT-639 stale queue correction for DevOps Engineer	[]	2026-05-11T08:51:15.202Z
+RAT-573	Implement admin bulk stale in_progress correction endpoint (conflict-safe)	[]	2026-05-11T08:50:20.818Z
+RAT-428	Fix issue status governor: prevent done->in_progress auto-flip without new scoped input	[]	2026-05-11T08:25:15.491Z
+RAT-346	Implement local postgres as a database for the system	[]	2026-05-11T07:50:34.837Z
+blocked_needs_attention_count=10
+missing_blockers_count=10
+MISS: RAT-691 missing blocker RAT-554
+MISS: RAT-388 missing blocker RAT-721
+MISS: RAT-392 missing blocker RAT-747
+MISS: RAT-659 missing blocker RAT-579
+MISS: RAT-632 missing blocker RAT-292
+MISS: RAT-568 missing blocker RAT-428
+MISS: RAT-646 missing blocker RAT-639
+MISS: RAT-573 missing blocker RAT-582
+MISS: RAT-428 missing blocker RAT-568
+MISS: RAT-346 missing blocker RAT-347
+missing_expected_blocker_edges=10
+RESULT=BLOCKED_EXPECTED_EDGES_NOT_PERSISTED
+DETAIL=Control-plane blocker-edge persistence/readback still missing for one or more DevOps slice issues

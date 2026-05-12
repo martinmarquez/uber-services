@@ -1,0 +1,32 @@
+### PRE-STATE
+{
+  "identifier": "RAT-406",
+  "status": "in_progress",
+  "priority": "high",
+  "updatedAt": "2026-05-12T03:21:47.367Z",
+  "completedAt": null,
+  "activeRunId": null
+}
+
+### COMMENT CLOSEOUT
+{
+  "id": "a04a7445-da38-4c91-998d-b6ed2fe0b62a",
+  "createdAt": "2026-05-12T03:22:25.199Z"
+}
+
+### PATCH STATUS DONE
+{
+  "identifier": "RAT-406",
+  "status": "done",
+  "completedAt": "2026-05-12T03:22:25.228Z",
+  "updatedAt": "2026-05-12T03:22:25.227Z"
+}
+
+### POST-STATE
+{
+  "identifier": "RAT-406",
+  "status": "done",
+  "completedAt": "2026-05-12T03:22:25.228Z",
+  "updatedAt": "2026-05-12T03:22:25.238Z",
+  "activeRun": null
+}

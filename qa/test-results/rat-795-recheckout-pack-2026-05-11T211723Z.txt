@@ -1,0 +1,92 @@
+RAT-795 re-checkout execution pack
+date=2026-05-11T21:17:23Z
+reason=state-correction-sweep-rat-556
+--- step: blocked queue normalization readback ---
+RAT-795 DevOps blocked queue unblock normalization check
+snapshot: qa/test-results/rat-709-cto-cluster-snapshot-2026-05-11T21:14:44Z.json
+agent: 8dd474b9-148d-4918-9f17-34a47b499e08
+-- blocked needs_attention entries --
+RAT-676	Ownership correction: move infra-doc/runtime DB tasks to DevOps	[]	2026-05-11T16:05:12.822Z
+RAT-772	Residual lifecycle blocked-cluster collapse (CTO queue -> platform ownership)	[]	2026-05-11T15:56:40.229Z
+RAT-428	Fix issue status governor: prevent done->in_progress auto-flip without new scoped input	[]	2026-05-11T15:15:06.998Z
+RAT-573	Implement admin bulk stale in_progress correction endpoint (conflict-safe)	[]	2026-05-11T15:14:17.738Z
+RAT-392	Staging/Production actor-signing rollout evidence for RAT-134	[]	2026-05-11T15:14:17.069Z
+RAT-632	Ownership correction execution: route RAT-292 runtime workspace bind to DevOps	[]	2026-05-11T15:14:14.996Z
+RAT-659	Ownership correction batch B: runtime workspace binding route	[]	2026-05-11T15:14:09.983Z
+RAT-747	Platform/SRE: Execute staging+production actor-signing rollout evidence collection for RAT-392	[]	2026-05-11T15:13:21.272Z
+RAT-660	Implement scoped resume gate for terminal issue reopen transitions	[]	2026-05-11T15:06:33.706Z
+RAT-444	Fix RAT-157 runtime gate failure: psql_unexecutable + warehouse creds missing	[]	2026-05-11T10:19:32.155Z
+RAT-633	Ownership correction execution: route RAT-579 runtime workspace reassignment to DevOps	[]	2026-05-11T09:47:19.080Z
+RAT-390	Implement terminal-state resume gate in control-plane lifecycle runtime	[]	2026-05-11T09:47:18.535Z
+RAT-374	RAT-231 Follow-up: fix issue lifecycle auto-reopen regression	[]	2026-05-11T09:47:18.523Z
+RAT-382	Implement terminal-state resume gate and no-delta reopen suppression	[]	2026-05-11T09:47:18.510Z
+RAT-645	Implement lifecycle suppression for repeated status-reopen events on closed productivity-review issues	[]	2026-05-11T09:47:19.312Z
+RAT-246	Implement stale-run dedup + terminal-source guard in runtime detector	[]	2026-05-11T09:47:19.300Z
+blocked_needs_attention_count=16
+missing_blockers_count=16
+MISS: RAT-691 missing blocker RAT-554
+MISS: RAT-388 missing blocker RAT-721
+MISS: RAT-392 missing blocker RAT-747
+MISS: RAT-659 missing blocker RAT-579
+MISS: RAT-632 missing blocker RAT-292
+MISS: RAT-568 missing blocker RAT-428
+MISS: RAT-646 missing blocker RAT-639
+MISS: RAT-573 missing blocker RAT-582
+MISS: RAT-428 missing blocker RAT-568
+MISS: RAT-346 missing blocker RAT-347
+missing_expected_blocker_edges=10
+RESULT=BLOCKED_EXPECTED_EDGES_NOT_PERSISTED
+DETAIL=Control-plane blocker-edge persistence/readback still missing for one or more DevOps slice issues
+--- step: wave1 acceptance ---
+RAT-795 wave1 acceptance check
+date=2026-05-11T21:17:23Z
+-- explicit unblock paths --
+1. RAT-691 -> RAT-554
+2. RAT-388 -> RAT-721
+3. RAT-392 -> RAT-747
+4. RAT-659 -> RAT-579
+5. RAT-632 -> RAT-292
+6. RAT-568 -> RAT-428
+7. RAT-646 -> RAT-639
+8. RAT-573 -> RAT-582
+9. RAT-428 -> RAT-568
+10. RAT-346 -> RAT-347
+explicit_unblock_paths=10
+RESULT=PASS_WAVE1_ACCEPTANCE
+DETAIL=First-wave requirement met: >=8 explicit unblock paths documented
+NOTE=Execution remains externally blocked until control-plane credentials and full ID coverage are provided
+artifact=qa/test-results/rat-795-wave1-acceptance-2026-05-11T211723Z.txt
+--- step: blocker-edge apply plan (dry-run) ---
+RAT-795 blocker-edge apply attempt
+date=2026-05-11T21:17:23Z
+snapshot=qa/test-results/rat-709-cto-cluster-snapshot-2026-05-11T21:14:44Z.json
+company_id=ecee6d4c-08bc-4e67-af62-5f6eb884f553
+dry_run=1
+MODE=DRY_RUN
+TARGET: RAT-691(424951a3-3803-4fdd-888d-f059da6f7d23) -> RAT-554(f57467c8-56b3-4ab6-87c1-8f73f6a20002)
+DRY: PATCH /api/issues/424951a3-3803-4fdd-888d-f059da6f7d23 {blockedByIssueIds:["f57467c8-56b3-4ab6-87c1-8f73f6a20002"]}
+TARGET: RAT-388(73142872-80b9-4159-84c2-f5b5d76d4112) -> RAT-721(d8887a08-829c-4c83-82c4-58d82178fc3c)
+DRY: PATCH /api/issues/73142872-80b9-4159-84c2-f5b5d76d4112 {blockedByIssueIds:["d8887a08-829c-4c83-82c4-58d82178fc3c"]}
+TARGET: RAT-392(5f36bba8-5a0e-4520-8430-e2644dcc1dad) -> RAT-747(1d0ea04f-3f6f-4d01-ac8d-2d946a62972f)
+DRY: PATCH /api/issues/5f36bba8-5a0e-4520-8430-e2644dcc1dad {blockedByIssueIds:["1d0ea04f-3f6f-4d01-ac8d-2d946a62972f"]}
+TARGET: RAT-659(24b1c5f2-d57e-4ab2-bd2b-14f293ba538b) -> RAT-579(1996a604-42fc-4d08-b943-d2eec120d35b)
+DRY: PATCH /api/issues/24b1c5f2-d57e-4ab2-bd2b-14f293ba538b {blockedByIssueIds:["1996a604-42fc-4d08-b943-d2eec120d35b"]}
+TARGET: RAT-632(fa36f04e-d0c6-46ce-8e8b-64ad79f8f743) -> RAT-292(1fbf18ad-5bc6-4013-b8ea-001eff140510)
+DRY: PATCH /api/issues/fa36f04e-d0c6-46ce-8e8b-64ad79f8f743 {blockedByIssueIds:["1fbf18ad-5bc6-4013-b8ea-001eff140510"]}
+TARGET: RAT-568(21d5ac23-17a0-468e-b752-e4a02dfc6ede) -> RAT-428(ad50f2eb-2749-442b-8700-7b267a227c40)
+DRY: PATCH /api/issues/21d5ac23-17a0-468e-b752-e4a02dfc6ede {blockedByIssueIds:["ad50f2eb-2749-442b-8700-7b267a227c40"]}
+TARGET: RAT-646(b7621e82-8ee9-4efd-9acf-9f8538d46622) -> RAT-639(4cf446f2-f8b1-465a-ad5a-5f7c212aa471)
+DRY: PATCH /api/issues/b7621e82-8ee9-4efd-9acf-9f8538d46622 {blockedByIssueIds:["4cf446f2-f8b1-465a-ad5a-5f7c212aa471"]}
+TARGET: RAT-573(13a29457-e38b-4328-8f32-329a0ffe8294) -> RAT-582(b6a6e96d-facd-468b-b0dc-d849a7064139)
+DRY: PATCH /api/issues/13a29457-e38b-4328-8f32-329a0ffe8294 {blockedByIssueIds:["b6a6e96d-facd-468b-b0dc-d849a7064139"]}
+TARGET: RAT-428(ad50f2eb-2749-442b-8700-7b267a227c40) -> RAT-568(21d5ac23-17a0-468e-b752-e4a02dfc6ede)
+DRY: PATCH /api/issues/ad50f2eb-2749-442b-8700-7b267a227c40 {blockedByIssueIds:["21d5ac23-17a0-468e-b752-e4a02dfc6ede"]}
+TARGET: RAT-346(e178ec4f-1c0e-43dc-a563-d52e7fc89b97) -> RAT-347(80144fd2-db53-42a3-84d3-76d7dcd24972)
+DRY: PATCH /api/issues/e178ec4f-1c0e-43dc-a563-d52e7fc89b97 {blockedByIssueIds:["80144fd2-db53-42a3-84d3-76d7dcd24972"]}
+summary_missing_id_resolution=0
+summary_applied=0
+summary_verified=0
+RESULT=READY_TO_APPLY
+DETAIL=Dry-run generated exact API mutation plan for 10 DevOps blocker edges
+artifact=qa/test-results/rat-795-devops-blockedby-apply-attempt-2026-05-11T211723Z.txt
+NEXT_ACTION=If control-plane credentials become available, run DRY_RUN=0 apply-rat-795-devops-blocker-edges.sh and rerun normalization check

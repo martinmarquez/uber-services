@@ -22,3 +22,15 @@ This scaffold provides the minimum execution surface to unblock RAT-8:
 `node server/src/db/runSqliteMigrations.js server/.data/reviews-dev.sqlite`
 3. DB-backed repository/outbox integration is available through `SqliteReviewRepository` + `ReviewService({ repository })`.
 4. Promote SQLite + PostgreSQL integration tests to CI with a seeded `DATABASE_URL`.
+
+## Security runtime notes
+
+- API actor headers can be cryptographically verified by setting `ACTOR_SIGNING_SECRET`.
+- Signature contract reference:
+  - `docs/trust-safety/rat-134-actor-signing-contract.md`
+
+## Lifecycle guardrails
+
+- Terminal issue immutability contract (RAT-363):
+  - `npm run guard:rat-363`
+- This check enforces that `done`/`cancelled` issues cannot reopen without explicit scoped resume context.

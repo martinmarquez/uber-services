@@ -2,6 +2,11 @@
 
 ## Cycle 1
 - Date:
+- Commit SHA:
+- Environment/Stage:
+- Dataset/Snapshot ID:
+- Random Seed:
+- Runner Version:
 - Scope:
 - Test run reference:
 - Critical defects found:
@@ -11,6 +16,11 @@
 
 ## Cycle 2
 - Date:
+- Commit SHA:
+- Environment/Stage:
+- Dataset/Snapshot ID:
+- Random Seed:
+- Runner Version:
 - Scope:
 - Test run reference:
 - Critical defects found:

@@ -46,3 +46,36 @@ Once control-plane patch + replay evidence is attached, re-run a targeted regres
 
 ## Verification Artifact
 - `qa/test-results/rat-404-reopen-guardrail-ownership-check-2026-05-11.md`
+
+## Detection Query (in this workspace)
+- `bash tools/guardrails/check-rat-404-done-in-progress-reopen-surface.sh`
+  - Confirms whether control-plane lifecycle signatures are present before attempting implementation.
+  - In this workspace, the script returns `BLOCKED_WRONG_REPO`.
+- When the control-plane repo is patched, add an equivalent runtime query over issue transitions/wake events to flag repeated terminal reopen candidates.
+  - Suggested filter:
+    - `new_status IN ('done','cancelled') AND previous_status IN ('in_progress','blocked')`
+    - `AND source = 'status_changed_automation'`
+    - `AND NOT (resume = true AND actor_id IS NOT NULL)`
+    - `AND NOT actionable_context_delta`
+
+## Mitigation Rollout (Control-Plane Track)
+1. Add terminal reopen gate on state transitions
+- Reject `done`/`cancelled -> in_progress/todo` unless payload sets `resume=true` plus auditable actor + reason.
+2. Add scoped-action gating
+- Require at least one explicit delta: new comment text, explicit approval-stage transition, or blocker-resolution event assigning action to assignee.
+3. Make checkout side-effects non-mutating for terminal states
+- `checkout` and wake reconciliation must not alter terminal status by default.
+4. Add no-delta wake suppression
+- If wake carries only terminal finalization and no actionable delta, drop re-enqueue/reopen and log `NO_OP`.
+5. Add regression tests in control-plane runtime
+- Cover no-new-context reopen attempts, explicit resume reopen, and blocker/comment transition reopening.
+
+## Final Handoff for this run (2026-05-11)
+- Disposition: `blocked` remains.
+- Required owner for execution: `@CTO` control-plane lifecycle maintainer.
+- Required execution slice:
+  1. Patch terminal reopen gate and checkout/wake non-mutation in control-plane runtime.
+  2. Add actionable-context gating (`new comment`, `approval stage transition`, `blocker resolution requiring assignee action`).
+  3. Attach replay evidence for 24h+ synthetic no-delta wake sequence and explicit-`resume:true` path.
+- Handoff artifact reference set: `tools/guardrails/check-rat-404-done-in-progress-reopen-surface.sh`, `qa/test-results/rat-404-reopen-guardrail-ownership-check-2026-05-11.md`.
+- Closure condition in this workspace: this issue can move to `in_review`/`done` only after owner posts control-plane patch + evidence links in `RAT-404` and removes the ownership blocker.

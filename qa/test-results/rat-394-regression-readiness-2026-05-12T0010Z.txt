@@ -1,0 +1,6 @@
+RAT-394 regression readiness check
+repo: /Users/martinmarquez/uber-services
+STATUS=BLOCKED_WRONG_REPO
+DETAIL=No control-plane lifecycle runtime signatures found in server/*
+UNBLOCK_OWNER=@board
+UNBLOCK_ACTION=Attach/reroute to control-plane runtime workspace owning /api/issues transition + checkout/wake handlers

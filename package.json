@@ -16,7 +16,11 @@
     "db:local:postgres:up": "docker run --name uber-services-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=uber-services -p 5432:5432 -d postgres:16",
     "db:local:postgres:down": "docker rm -f uber-services-pg",
     "smoke:local": "./tools/smoke/local-availability-smoke.sh",
-    "dev:full": "./tools/dev/start-local.sh"
+    "dev:full": "./tools/dev/start-local.sh",
+    "guard:rat-363": "./tools/guardrails/check-rat-363-terminal-reopen-contract.sh",
+    "guard:rat-419": "./tools/guardrails/check-rat-419-rat-11-reopen-path.sh",
+    "guard:lifecycle-terminal": "npm run guard:rat-363",
+    "guard:rat-1007": "./tools/guardrails/check-rat-1007-long-active-no-next-action-churn.sh"
   },
   "dependencies": {
     "react": "^18.3.1",

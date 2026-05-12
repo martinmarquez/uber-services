@@ -23,7 +23,7 @@ This quality gate is mandatory for all rating/review features: create, edit, del
 - Authorization bypass attempts on report/moderation endpoints.
 
 3. Performance & Reliability QA
-- P95/P99 latency on submit/read/report endpoints.
+- Numeric SLO gates on submit/read/report endpoints (p95/p99/error-budget thresholds).
 - Degraded dependencies and high-latency backend scenarios.
 - Idempotency and retry behavior for duplicate submits.
 - Partial offline flow: client queue + eventual sync.
@@ -32,7 +32,12 @@ This quality gate is mandatory for all rating/review features: create, edit, del
 - Form clarity and validation copy.
 - Recovery path after submission errors.
 - Accessibility checks for keyboard/screen reader basics.
+- Modal accessibility checks (`Escape`, focus trap, focus restore) for report/reply flows.
 - Dispute and report workflows understandable without support intervention.
+
+5. Contract Compatibility QA
+- Backward compatibility checks for moderation/ranking payloads (`vCurrent` and `vPrev`).
+- Safe handling of additive schema changes and explicit CI failure on breaking removals/renames.
 
 ## Mandatory Review Protocol
 - CTO review: technical coverage and architecture risks.
@@ -57,4 +62,5 @@ Release remains blocked until both cycles are completed with evidence in `qa/tes
 - Test run report per cycle.
 - Defect list with severity, owner, status.
 - Sign-off notes from CTO, UX/UI, Security.
+- Reproducibility metadata: commit SHA, environment/stage, dataset/snapshot id, seed, runner version.
 - Final gate decision: PASS/BLOCKED.

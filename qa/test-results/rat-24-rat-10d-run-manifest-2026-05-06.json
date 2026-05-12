@@ -1,0 +1,64 @@
+{
+  "run_id": "rat10d-2026-05-06T23:30:00Z",
+  "generated_at_utc": "2026-05-06T23:28:05Z",
+  "owner_issue": "RAT-10",
+  "qa_issue": "RAT-24",
+  "git_commit": "48c577a31885b48c91e347b886a0bbf8db27e443",
+  "seed": {
+    "seed_version": "seed-v1-2026Q2",
+    "seed_value": 42,
+    "seed_scope": ["synthetic_data_generation", "simulations", "bootstrap"]
+  },
+  "dataset_snapshot": {
+    "data_cutoff_utc": "2026-05-06T23:30:00Z",
+    "timezone": "UTC",
+    "snapshot_uri": "generated-in-memory:analysis/rat10_simulation.py",
+    "dataset_hash_sha256": "35a480dc58df227231b686b3d93ea5e8053affa3c830b128b947d0218407a1cc",
+    "schema_version": "ranking_synth_v1"
+  },
+  "baseline": {
+    "baseline_id": "baseline_naive_avg_v1",
+    "baseline_commit": "48c577a31885b48c91e347b886a0bbf8db27e443",
+    "baseline_notes": "Defined in RAT-10-ranking-robusto.md"
+  },
+  "scoring_parameters": {
+    "params_version": "rat10-v2-calibrated",
+    "params_json": {
+      "C": 4.2,
+      "m": 20,
+      "k": 15,
+      "lambda": 0.0057762265,
+      "gamma": 0.35
+    },
+    "params_hash_sha256": "136fd4f9bdf3df20f622cb52e790aae2da4ec80b9264d58831850cc90d958cd0"
+  },
+  "incident_aggregation": {
+    "function": "sum_exp_decay_capped",
+    "window_days": 180,
+    "cap": 3.0,
+    "decay_rule": "exp(-ln(2)*age_days/90)"
+  },
+  "ab_traceability": {
+    "experiment_ids": ["offline_synth_iter2"],
+    "window_start_utc": "2026-05-06T23:30:00Z",
+    "window_end_utc": "2026-05-06T23:30:00Z",
+    "strata": ["city", "category", "platform"],
+    "cuped_covariate": "historical_booking_propensity"
+  },
+  "data_quality_checks": {
+    "srm_p_value": null,
+    "srm_pass": null,
+    "logging_completeness_pass": null,
+    "deduplication_pass": null,
+    "fraud_filter_version": "synthetic-risk-v1"
+  },
+  "results_artifacts": {
+    "metrics_table_uri": "qa/test-results/rat-24-rat-10d-rerun-readout-2026-05-06.md",
+    "decision_memo_uri": "analysis/RAT-10-simulation-report-iter2.md"
+  },
+  "qa_gate": {
+    "decision": "PASS",
+    "reviewer": "Data Analyst",
+    "reviewed_at_utc": "2026-05-06T23:28:05Z"
+  }
+}

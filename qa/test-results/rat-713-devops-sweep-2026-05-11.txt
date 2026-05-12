@@ -1,0 +1,10 @@
+timestamp_utc=2026-05-11T09:34:46Z
+RAT-713 blocked needs_attention cluster sweep
+repo: /Users/martinmarquez/uber-services
+gate_product_brief=yes
+gate_deploy_config=yes
+cluster_file=qa/test-results/rat-608-qa-evidence-chain-unblock-status-2026-05-11.md
+blocked_rows=6
+incomplete_blocked_rows=0
+RESULT=READY_CLUSTER_NORMALIZED
+DETAIL=Blocked cluster rows contain explicit blockedBy and unblock owner/action

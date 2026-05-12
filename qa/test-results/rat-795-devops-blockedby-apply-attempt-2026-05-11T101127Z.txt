@@ -1,0 +1,7 @@
+RAT-795 blocker-edge apply attempt
+date=2026-05-11T10:11:27Z
+snapshot=qa/test-results/rat-709-cto-cluster-snapshot-2026-05-11T09:36:13Z.json
+company_id=ecee6d4c-08bc-4e67-af62-5f6eb884f553
+dry_run=0
+TARGET: RAT-691(424951a3-3803-4fdd-888d-f059da6f7d23) -> RAT-554(f57467c8-56b3-4ab6-87c1-8f73f6a20002)
+FAIL: missing PAPERCLIP_BASE_URL or PAPERCLIP_API_TOKEN

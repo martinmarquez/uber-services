@@ -1,0 +1,5 @@
+timestamp_utc=2026-05-11T08:10:01Z
+RAT-573 runtime surface check
+repo: /Users/martinmarquez/uber-services
+RESULT=BLOCKED_WRONG_REPO
+DETAIL=No issue lifecycle admin API signatures found in server/*

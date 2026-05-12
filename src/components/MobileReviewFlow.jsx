@@ -18,6 +18,7 @@ import {
 } from "../analytics/reviewExperimentTracking";
 import {
   createReview,
+  appealReview,
   fetchReviews,
   reportReview,
   respondToReview,
@@ -182,9 +183,10 @@ function StarRow({ value, onToggle, onKeyDown }) {
   );
 }
 
-function ReviewCard({ review, onReport, onRespond }) {
+function ReviewCard({ review, onReport, onRespond, onAppeal }) {
   const moderation = statusBadgeFromContract(review.status);
   const lowConfidence = isLowConfidenceReview(review);
+  const showAppealCta = review.status === REVIEW_MODERATION_STATUS.NOT_RECOMMENDED;
 
   return (
     <article className="review-card" aria-labelledby={`review-${review.id}`}>
@@ -238,6 +240,16 @@ function ReviewCard({ review, onReport, onRespond }) {
         <p className="provider-response-title">Respuesta del prestador</p>
         <p>{review.providerResponse}</p>
       </section>
+      {showAppealCta ? (
+        <button
+          type="button"
+          className="action-link"
+          onClick={() => onAppeal(review)}
+          aria-label={`Iniciar apelacion de reseña de ${review.provider}`}
+        >
+          Iniciar apelacion
+        </button>
+      ) : null}
     </article>
   );
 }
@@ -449,8 +461,7 @@ export default function MobileReviewFlow() {
   const [listWarning, setListWarning] = useState("");
   const [filter, setFilter] = useState("all");
   const [reloadNonce, setReloadNonce] = useState(0);
-  const [activeReport, setActiveReport] = useState(null);
-  const [activeRespond, setActiveRespond] = useState(null);
+  const [activeModal, setActiveModal] = useState(null);
   const [modalInvoker, setModalInvoker] = useState(null);
   const [liveMessage, setLiveMessage] = useState("");
   const [experimentAssignment, setExperimentAssignment] = useState(null);
@@ -710,6 +721,16 @@ export default function MobileReviewFlow() {
       setRating(Math.max(1, value - 1));
       setSubmitted(false);
     }
+    if (event.key === "Home") {
+      event.preventDefault();
+      setRating(1);
+      setSubmitted(false);
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      setRating(5);
+      setSubmitted(false);
+    }
     if (event.key === "0") {
       event.preventDefault();
       setRating(0);
@@ -719,7 +740,7 @@ export default function MobileReviewFlow() {
   };
 
   const handleReportSubmit = async ({ reviewId, reason }) => {
-    setActiveReport(null);
+    setActiveModal(null);
     try {
       const reasonCode = reason === "abuse" ? "offensive_content" : reason === "personal" ? "privacy_exposure" : reason === "other" ? "other" : "fraud_signal";
       const response = await reportReview(reviewId, {
@@ -754,7 +775,7 @@ export default function MobileReviewFlow() {
   };
 
   const handleRespondSubmit = async ({ reviewId, message }) => {
-    setActiveRespond(null);
+    setActiveModal(null);
     try {
       const response = await respondToReview(reviewId, {
         message: message.trim(),
@@ -782,6 +803,18 @@ export default function MobileReviewFlow() {
       }
     } catch (_error) {
       setLiveMessage("No pudimos enviar la respuesta. Reintentá.");
+    }
+  };
+
+  const handleAppealStatus = async (review) => {
+    try {
+      await appealReview(review.id, {
+        note: "Solicito apelación por estado de moderación.",
+        idempotencyKey: `appeal-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      });
+      setLiveMessage("Apelación enviada. Te notificaremos cuando se revise.");
+    } catch (_error) {
+      setLiveMessage("No pudimos enviar la apelación. Reintentá.");
     }
   };
 
@@ -958,7 +991,7 @@ export default function MobileReviewFlow() {
               Tocá una estrella para calificar. Si querés cambiar, tocá otra.
             </p>
             <p id="rating-instructions" className="sr-only">
-              Usá las flechas para ajustar la calificación y la tecla 0 para limpiar la selección.
+              Usá las flechas para ajustar la calificación. La tecla Inicio va a 1 estrella, Fin a 5 y 0 limpia la selección.
             </p>
           </fieldset>
 
@@ -1017,9 +1050,11 @@ export default function MobileReviewFlow() {
             <p>{trustState.message}</p>
           </aside>
 
-          <button className="submit-button" type="submit" disabled={!rating || isSubmitting || !canReview}>
+          <div className="review-submit-cta">
+            <button className="submit-button" type="submit" disabled={!rating || isSubmitting || !canReview}>
             {isSubmitting ? "Enviando..." : "Enviar reseña"}
-          </button>
+            </button>
+          </div>
           {!canReview ? <p className="field-note">Primero completá una contratación para habilitar la reseña verificada.</p> : null}
 
           {submitted && <p className="confirm">Gracias. Tu reseña fue enviada. Puede pasar por validación antes de publicarse.</p>}
@@ -1096,12 +1131,13 @@ export default function MobileReviewFlow() {
                 review={review}
                 onReport={(reviewItem, invokerEl) => {
                   setModalInvoker(invokerEl);
-                  setActiveReport(reviewItem);
+                  setActiveModal({ type: "report", review: reviewItem });
                 }}
                 onRespond={(reviewItem, invokerEl) => {
                   setModalInvoker(invokerEl);
-                  setActiveRespond(reviewItem);
+                  setActiveModal({ type: "respond", review: reviewItem });
                 }}
+                onAppeal={handleAppealStatus}
               />
             ))}
         </section>
@@ -1112,15 +1148,15 @@ export default function MobileReviewFlow() {
       </p>
 
       <ReportModal
-        review={activeReport}
+        review={activeModal?.type === "report" ? activeModal.review : null}
         returnFocusEl={modalInvoker}
-        onClose={() => setActiveReport(null)}
+        onClose={() => setActiveModal(null)}
         onSubmit={handleReportSubmit}
       />
       <RespondModal
-        review={activeRespond}
+        review={activeModal?.type === "respond" ? activeModal.review : null}
         returnFocusEl={modalInvoker}
-        onClose={() => setActiveRespond(null)}
+        onClose={() => setActiveModal(null)}
         onSubmit={handleRespondSubmit}
       />
     </main>

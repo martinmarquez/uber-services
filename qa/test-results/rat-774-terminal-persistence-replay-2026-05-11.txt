@@ -1,0 +1,11 @@
+RAT-774 productivity-review terminal persistence replay
+repo: /Users/martinmarquez/uber-services
+issue_id: RAT-349
+ledger_path: server/.data/rat-774-terminal-ledger.json
+persist_ok=yes
+persisted_terminal_status=done
+wake_emit=no
+wake_code=dedupe_terminal_resume_wake_without_comment_delta
+mutation_allow=no
+mutation_code=resume_required_for_terminal_reopen
+RESULT=PASS_TERMINAL_PERSISTENCE_GUARD

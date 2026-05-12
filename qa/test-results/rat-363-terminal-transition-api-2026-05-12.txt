@@ -1,0 +1,30 @@
+### PRE-STATE
+{
+  "identifier": "RAT-363",
+  "status": "in_progress",
+  "priority": "high",
+  "updatedAt": "2026-05-12T03:21:12.487Z"
+}
+
+### COMMENT CLOSEOUT
+{
+  "id": "a16e50c9-079e-46d7-b95d-eddabaa49543",
+  "createdAt": "2026-05-12T03:21:46.807Z"
+}
+
+### PATCH STATUS DONE
+{
+  "identifier": "RAT-363",
+  "status": "done",
+  "completedAt": "2026-05-12T03:21:46.834Z",
+  "updatedAt": "2026-05-12T03:21:46.833Z"
+}
+
+### POST-STATE
+{
+  "identifier": "RAT-363",
+  "status": "done",
+  "completedAt": "2026-05-12T03:21:46.834Z",
+  "updatedAt": "2026-05-12T03:21:46.833Z",
+  "activeRun": null
+}

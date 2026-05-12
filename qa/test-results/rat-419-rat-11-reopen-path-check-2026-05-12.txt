@@ -1,0 +1,89 @@
+
+> uber-services-mvp@0.1.0 guard:rat-419
+> ./tools/guardrails/check-rat-419-rat-11-reopen-path.sh
+
+RAT-419 RAT-11 reopen/status-drift runtime-surface check
+repo: /Users/martinmarquez/uber-services
+RESULT=BLOCKED_WRONG_REPO
+DETAIL=No control-plane issue lifecycle runtime signatures found in server/*
+RAT11_CONTEXT_HITS:
+tools/guardrails/check-rat-419-rat-11-reopen-path.sh:7:echo "RAT-419 RAT-11 reopen/status-drift runtime-surface check"
+tools/guardrails/check-rat-419-rat-11-reopen-path.sh:12:rat11_hits="$(rg -n 'RAT-11|rat-11' docs server tools 2>/dev/null || true)"
+docs/reviews/rat-153-ceo-productivity-review-rat-45.md:5:Scope reviewed: `RAT-45` execution productivity after prior review `RAT-116`
+docs/reviews/rat-153-ceo-productivity-review-rat-45.md:11:`RAT-45` now shows criterion-by-criterion closure evidence with done-gate #1-#6 marked `PASS`, named owners, and downstream unblock status documented. The prior execution-stall condition from `RAT-116` is resolved.
+docs/reviews/rat-153-ceo-productivity-review-rat-45.md:17:  - `docs/reviews/rat-116-ceo-productivity-review-rat-45.md`
+docs/reviews/rat-182-cmo-productivity-review-rat-14.md:16:- PM sign-off exists for consolidated trust policy v2: `docs/reviews/rat-115-pm-signoff-consolidated-trust-policy-v2-2026-05-07.md`.
+docs/reviews/rat-147-cmo-productivity-review-rat-14.md:22:  - PM sign-off artifact published: `docs/reviews/rat-115-pm-signoff-consolidated-trust-policy-v2-2026-05-07.md`
+docs/analysis/rat-15-cross-team-execution-map-and-review-cadence-2026-05-11.md:21:- `RAT-11` moderation operations and appeals playbook.
+docs/reviews/rat-198-ceo-productivity-review-rat-3.md:21:  - `done`: 5 (`RAT-4`, `RAT-8`, `RAT-10`, `RAT-11`, `RAT-12`)
+docs/analysis/rat-363-workflow-fix-rat-115-auto-reopen-loop-2026-05-11.md:1:# RAT-363 Workflow Fix: RAT-115 Auto-Reopen Loop Without New Context
+docs/analysis/rat-363-workflow-fix-rat-115-auto-reopen-loop-2026-05-11.md:8:`RAT-115` and similar terminal issues were being reactivated by automation/checkouts without new scope context, creating looped reopen churn and invalid WIP.
+docs/analysis/rat-441-recurring-auto-reopen-drift-closed-review-issues-rat-113-pattern-2026-05-11.md:1:# RAT-441 Investigation: recurring auto-reopen drift on closed review issues (RAT-113 pattern) (2026-05-11)
+docs/analysis/rat-441-recurring-auto-reopen-drift-closed-review-issues-rat-113-pattern-2026-05-11.md:6:Objective: investigate recurring reopen drift on closed review issues, anchored to the `RAT-113` pattern.
+docs/analysis/rat-441-recurring-auto-reopen-drift-closed-review-issues-rat-113-pattern-2026-05-11.md:15:  - `analysis/rat-351-reprocessed-by-day.tsv` shows `RAT-113` transitioned `done -> to_todo` on `2026-05-11`.
+docs/analysis/rat-441-recurring-auto-reopen-drift-closed-review-issues-rat-113-pattern-2026-05-11.md:19:2. `RAT-113` provides concrete lineage evidence (`done -> to_todo` churn), matching the repeated reopen family.
+docs/analysis/rat-441-recurring-auto-reopen-drift-closed-review-issues-rat-113-pattern-2026-05-11.md:31:  4. Attach replay evidence for RAT-113-equivalent and repeated no-delta wake scenarios proving reopen count remains `0` without `resume:true`.
+docs/analysis/rat-419-closeout-followup-2026-05-12.md:8:- `tools/guardrails/check-rat-419-rat-11-reopen-path.sh`
+docs/analysis/rat-419-closeout-followup-2026-05-12.md:13:- Output: `qa/test-results/rat-419-rat-11-reopen-path-check-2026-05-12.txt`
+docs/analysis/rat-419-closeout-followup-2026-05-12.md:21:  - replay showing RAT-11 stays terminal under at least one post-fix cycle.
+docs/analysis/rat-419-closeout-followup-2026-05-12.md:30:- Action: deploy canonical runtime patch and attach replay evidence proving RAT-11 no longer reopens spuriously.
+docs/reviews/rat-45-closure-evidence-bundle-2026-05-07.md:77:## Same-Day Owner Update (RAT-116 Requirement)
+docs/analysis/rat-367-rat-150-auto-reopen-loop-investigation-2026-05-11.md:14:- `docs/analysis/rat-363-workflow-fix-rat-115-auto-reopen-loop-2026-05-11.md`
+docs/analysis/rat-374-rat-231-followup-implementation-status-2026-05-11.md:10:- `docs/analysis/rat-363-workflow-fix-rat-115-auto-reopen-loop-2026-05-11.md`
+docs/analysis/rat-796-qa-blocked-unblock-normalization-2026-05-11T100927Z.md:25:| RAT-190 | 0 | RAT-118 (todo) | patched -> [RAT-118] |
+docs/analysis/rat-382-implementation-blocker-2026-05-11.md:16:- `docs/analysis/rat-363-workflow-fix-rat-115-auto-reopen-loop-2026-05-11.md`
+docs/analysis/rat-366-rat-24-auto-reopen-loop-investigation-2026-05-11.md:17:- `docs/analysis/rat-363-workflow-fix-rat-115-auto-reopen-loop-2026-05-11.md`
+docs/analysis/rat-350-sequential-audit-batch-001-2026-05-11.md:22:11. RAT-11 (`done`) - Evidence present (`CHURN_TRACKING.md` moderation gate closure references).
+docs/analysis/rat-363-heartbeat-verification-2026-05-11.md:5:Scope: Confirm anti-reopen guard remains effective for RAT-115 pattern.
+docs/analysis/rat-372-rat-65-4-workflow-status-flap-blocker-2026-05-11.md:12:- `docs/analysis/rat-363-workflow-fix-rat-115-auto-reopen-loop-2026-05-11.md`
+docs/reviews/rat-340-qa-productivity-review-rat-190-2026-05-11.md:17:- `RAT-118` remains blocked by `RAT-202`; reopening RAT-190 as active creates state drift across the dependency chain.
+docs/analysis/rat-419-rat-11-reopen-status-drift-investigation-2026-05-11.md:1:# RAT-419 — Investigación y corrección propuesta de auto reopen/status-drift en RAT-11 (2026-05-11)
+docs/analysis/rat-419-rat-11-reopen-status-drift-investigation-2026-05-11.md:5:Objetivo: investigar por qué `RAT-11` vuelve a estados activos automáticamente (reopen/status drift) y dejar corrección accionable.
+docs/analysis/rat-419-rat-11-reopen-status-drift-investigation-2026-05-11.md:8:- `analysis/rat-351-reprocessed-by-day.tsv` registra para `RAT-11` en `2026-05-11` la transición automática `done -> to_todo`.
+docs/analysis/rat-419-rat-11-reopen-status-drift-investigation-2026-05-11.md:9:- `docs/reviews/rat-198-ceo-productivity-review-rat-3.md` y `docs/reviews/rat-282-ceo-productivity-review-rat-3.md` mantienen `RAT-11` como entregable `done` dentro del bundle histórico.
+docs/analysis/rat-419-rat-11-reopen-status-drift-investigation-2026-05-11.md:17:`RAT-11` no muestra evidencia de nuevo alcance funcional que justifique reopen. El patrón observado coincide con deriva automática del lifecycle del control plane:
+docs/analysis/rat-419-rat-11-reopen-status-drift-investigation-2026-05-11.md:35:- Investigación específica de `RAT-11` completada.
+docs/analysis/rat-419-rat-11-reopen-status-drift-investigation-2026-05-11.md:41:- **Action**: priorizar y desplegar guardrails de reopen en la línea `RAT-390/RAT-406`, luego adjuntar evidencia de replay con caso `RAT-11`.
+docs/analysis/rat-419-rat-11-reopen-status-drift-investigation-2026-05-11.md:46:- Decisión operativa en este heartbeat: re-normalizar `RAT-419` a `blocked` y sostener la misma ruta de desbloqueo (board/CTO runtime owner + guardrails `RAT-390/RAT-406` + replay de `RAT-11`).
+docs/analysis/rat-419-rat-11-reopen-status-drift-investigation-2026-05-11.md:54:- Conclusión operativa: la reapertura espuria de `RAT-11` sigue siendo un defecto de lifecycle runtime fuera de este repo de dominio; no existe patch local autoritativo en `uber-services`.
+docs/analysis/rat-419-rat-11-reopen-status-drift-investigation-2026-05-11.md:56:  - Mantener `blocked` hasta que owner de control-plane adjunte patch + replay donde `RAT-11` permanezca terminal ante wakes sin delta.
+docs/analysis/rat-419-rat-11-reopen-status-drift-investigation-2026-05-11.md:60:  - Action: desplegar guardrails runtime (`RAT-390/RAT-406`) y adjuntar replay de `RAT-11` sin reopen espurio.
+docs/analysis/rat-449-workflow-fix-rat-54-auto-reopen-without-new-context-2026-05-11.md:17:   - `docs/analysis/rat-363-workflow-fix-rat-115-auto-reopen-loop-2026-05-11.md`
+docs/analysis/rat-673-blockedby-normalization-sweep-2026-05-11.md:28:  - `RAT-735`, `RAT-32`, `RAT-14`, `RAT-119`
+docs/reviews/rat-185-ceo-productivity-review-rat-42.md:19:  - `docs/reviews/rat-117-ceo-productivity-review-rat-42.md`
+docs/reviews/rat-115-pm-signoff-consolidated-trust-policy-v2-2026-05-07.md:1:# RAT-115 PM Sign-off: Consolidated Trust Policy v2
+docs/reviews/rat-115-pm-signoff-consolidated-trust-policy-v2-2026-05-07.md:6:Issue: RAT-115
+docs/analysis/rat-440-fix-rat-112-reopen-loop-lifecycle-policy-2026-05-11.md:1:# RAT-440 Heartbeat: fix RAT-112 reopen-loop lifecycle policy (2026-05-11)
+docs/analysis/rat-440-fix-rat-112-reopen-loop-lifecycle-policy-2026-05-11.md:4:Scope: formalize lifecycle policy to prevent RAT-112-class reopen loops without human context.
+docs/analysis/rat-440-fix-rat-112-reopen-loop-lifecycle-policy-2026-05-11.md:15:`RAT-112` is closed as a false-positive silent-run review, but this defect family keeps resurfacing as lifecycle churn where issues in controlled states are reactivated without explicit human resume intent.
+docs/analysis/rat-440-fix-rat-112-reopen-loop-lifecycle-policy-2026-05-11.md:17:## Lifecycle policy for RAT-112-class reopen loops
+docs/analysis/rat-440-fix-rat-112-reopen-loop-lifecycle-policy-2026-05-11.md:38:5. Board WIP counts remain stable under no-delta replay for RAT-112-equivalent scenarios.
+docs/analysis/rat-440-fix-rat-112-reopen-loop-lifecycle-policy-2026-05-11.md:46:  2. Attach replay + integration-test evidence for RAT-112-equivalent fixture.
+docs/reviews/rat-42-closure-receipt-2026-05-08.md:9:  - `RAT-117`
+docs/reviews/rat-116-ceo-productivity-review-rat-45.md:1:# RAT-116 CEO Productivity Review for RAT-45
+docs/reviews/rat-111-ceo-review-silent-active-run-cto.md:1:# RAT-111 CEO Review: Silent Active Run for CTO
+docs/reviews/rat-111-ceo-review-silent-active-run-cto.md:15:- Alert issue: `RAT-111` (silent active run; source `RAT-98`)
+docs/reviews/rat-991-ceo-productivity-review-rat-363-2026-05-12.md:24:- Workflow fix artifact: `docs/analysis/rat-363-workflow-fix-rat-115-auto-reopen-loop-2026-05-11.md`.
+docs/reviews/rat-94-ceo-productivity-review-rat-3.md:11:`RAT-3` successfully decomposed the work into 12 scoped child lanes and produced multiple completed outcomes (`RAT-4`, `RAT-10`, `RAT-11`). However, the parent issue remains `in_progress` with no fresh owner execution note since `2026-05-07T03:22:11Z`, while still carrying unresolved blocked children.
+docs/reviews/rat-94-ceo-productivity-review-rat-3.md:20:  - `done`: 3 (`RAT-4`, `RAT-10`, `RAT-11`)
+docs/reviews/rat-113-ceo-review-silent-active-run-cto.md:1:# RAT-113 CEO Review: Silent Active Run for CTO
+docs/reviews/rat-113-ceo-review-silent-active-run-cto.md:15:- Alert issue: `RAT-113`
+docs/reviews/rat-110-ceo-review-silent-active-run-cto.md:1:# RAT-110 CEO Review: Silent Active Run for CTO
+docs/reviews/rat-110-ceo-review-silent-active-run-cto.md:25:1. Close `RAT-110` as done with false-positive classification.
+docs/reviews/rat-112-ceo-review-silent-active-run-ceo.md:1:# RAT-112 CEO Review: Silent Active Run for CEO
+docs/reviews/rat-112-ceo-review-silent-active-run-ceo.md:26:1. Close `RAT-112` as done with false-positive classification.
+docs/reviews/rat-146-cto-productivity-review-rat-64.md:5:Scope reviewed: `RAT-64` (FE integration feasibility review execution) and follow-up lifecycle handling after `RAT-100`/`RAT-111`
+docs/reviews/rat-146-cto-productivity-review-rat-64.md:20:  - `docs/reviews/rat-111-ceo-review-silent-active-run-cto.md`
+docs/reviews/rat-97-closure-evidence-bundle-2026-05-07.md:24:  - Child issue `RAT-110` completed with false-positive classification.
+docs/reviews/rat-97-closure-evidence-bundle-2026-05-07.md:25:  - Artifact: `docs/reviews/rat-110-ceo-review-silent-active-run-cto.md`.
+docs/reviews/rat-173-ceo-productivity-review-rat-3.md:17:  - `done`: 5 (`RAT-4`, `RAT-8`, `RAT-10`, `RAT-11`, `RAT-12`)
+docs/reviews/rat-14-cmo-cross-functional-closeout-2026-05-10.md:29:- PM Round-2 closeout approval exists in `docs/reviews/rat-115-pm-signoff-consolidated-trust-policy-v2-2026-05-07.md`.
+docs/reviews/rat-297-qa-productivity-review-rat-190-2026-05-10.md:15:  - Blocking relationship still present: `RAT-190` blocks `RAT-118`.
+docs/reviews/rat-297-qa-productivity-review-rat-190-2026-05-10.md:27:- Required release goal for this dependency chain is real-device VoiceOver/TalkBack evidence sufficient to unblock `RAT-118`; that evidence is still incomplete.
+docs/reviews/rat-85-ceo-productivity-review-rat-41.md:22:  - downstream `RAT-11` cleared to `done`
+docs/reviews/rat-119-ceo-productivity-review-rat-90.md:1:# RAT-119 CEO Productivity Review for RAT-90
+docs/reviews/rat-119-ceo-productivity-review-rat-90.md:26:## CEO Decision (RAT-119)
+docs/reviews/rat-114-ceo-review-silent-active-run-ceo.md:1:# RAT-114 CEO Review: Silent Active Run for CEO
+docs/reviews/rat-114-ceo-review-silent-active-run-ceo.md:26:1. Close `RAT-114` as done with false-positive classification.
+docs/reviews/rat-117-ceo-productivity-review-rat-42.md:1:# RAT-117 CEO Productivity Review for RAT-42
+docs/reviews/rat-282-ceo-productivity-review-rat-3.md:21:  - `done`: 6 (`RAT-4`, `RAT-8`, `RAT-9`, `RAT-10`, `RAT-11`, `RAT-12`)

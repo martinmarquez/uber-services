@@ -1,0 +1,11 @@
+
+> uber-services-mvp@0.1.0 guard:rat-363
+> ./tools/guardrails/check-rat-363-terminal-reopen-contract.sh
+
+RAT-363 terminal reopen contract check
+repo: /Users/martinmarquez/uber-services
+PASS: terminal reopen blocked without resume -> {"allow":false,"code":"resume_required_for_terminal_reopen"}
+PASS: terminal reopen allowed with explicit scoped resume -> {"allow":true,"code":"ok_explicit_resume"}
+PASS: no-delta status wake deduped for terminal issue -> {"emit":false,"code":"dedupe_terminal_resume_wake_without_comment_delta"}
+PASS: terminal issue cannot auto-resume from blocker resolution -> {"allow":false,"code":"auto_resume_blocked_for_terminal_issue"}
+RESULT=PASS

@@ -1,0 +1,21 @@
+RAT-840 blocked-edge normalization readback
+date=2026-05-11T15:13:46.124Z
+RAT-299	blockedByCount=2	RAT-656,RAT-790
+RAT-589	blockedByCount=3	RAT-202,RAT-190,RAT-118
+RAT-231	blockedByCount=1	RAT-128
+RAT-328	blockedByCount=1	RAT-319
+RAT-49	blockedByCount=1	RAT-218
+RAT-83	blockedByCount=1	RAT-360
+RAT-294	blockedByCount=1	RAT-354
+RAT-320	blockedByCount=1	RAT-326
+RAT-68	blockedByCount=1	RAT-5
+RAT-27	blockedByCount=1	RAT-5
+RAT-503	blockedByCount=1	RAT-354
+RAT-138	blockedByCount=1	RAT-673
+RAT-360	blockedByCount=1	RAT-763
+RAT-403	blockedByCount=1	RAT-803
+RAT-389	blockedByCount=1	RAT-294
+RAT-190	blockedByCount=1	RAT-118
+target_blocked_issues=16
+missing_formal_edges=0
+RESULT=PASS

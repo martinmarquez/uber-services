@@ -1,0 +1,31 @@
+RAT-795 blocker-edge apply attempt
+date=2026-05-11T21:17:23Z
+snapshot=qa/test-results/rat-709-cto-cluster-snapshot-2026-05-11T21:14:44Z.json
+company_id=ecee6d4c-08bc-4e67-af62-5f6eb884f553
+dry_run=1
+MODE=DRY_RUN
+TARGET: RAT-691(424951a3-3803-4fdd-888d-f059da6f7d23) -> RAT-554(f57467c8-56b3-4ab6-87c1-8f73f6a20002)
+DRY: PATCH /api/issues/424951a3-3803-4fdd-888d-f059da6f7d23 {blockedByIssueIds:["f57467c8-56b3-4ab6-87c1-8f73f6a20002"]}
+TARGET: RAT-388(73142872-80b9-4159-84c2-f5b5d76d4112) -> RAT-721(d8887a08-829c-4c83-82c4-58d82178fc3c)
+DRY: PATCH /api/issues/73142872-80b9-4159-84c2-f5b5d76d4112 {blockedByIssueIds:["d8887a08-829c-4c83-82c4-58d82178fc3c"]}
+TARGET: RAT-392(5f36bba8-5a0e-4520-8430-e2644dcc1dad) -> RAT-747(1d0ea04f-3f6f-4d01-ac8d-2d946a62972f)
+DRY: PATCH /api/issues/5f36bba8-5a0e-4520-8430-e2644dcc1dad {blockedByIssueIds:["1d0ea04f-3f6f-4d01-ac8d-2d946a62972f"]}
+TARGET: RAT-659(24b1c5f2-d57e-4ab2-bd2b-14f293ba538b) -> RAT-579(1996a604-42fc-4d08-b943-d2eec120d35b)
+DRY: PATCH /api/issues/24b1c5f2-d57e-4ab2-bd2b-14f293ba538b {blockedByIssueIds:["1996a604-42fc-4d08-b943-d2eec120d35b"]}
+TARGET: RAT-632(fa36f04e-d0c6-46ce-8e8b-64ad79f8f743) -> RAT-292(1fbf18ad-5bc6-4013-b8ea-001eff140510)
+DRY: PATCH /api/issues/fa36f04e-d0c6-46ce-8e8b-64ad79f8f743 {blockedByIssueIds:["1fbf18ad-5bc6-4013-b8ea-001eff140510"]}
+TARGET: RAT-568(21d5ac23-17a0-468e-b752-e4a02dfc6ede) -> RAT-428(ad50f2eb-2749-442b-8700-7b267a227c40)
+DRY: PATCH /api/issues/21d5ac23-17a0-468e-b752-e4a02dfc6ede {blockedByIssueIds:["ad50f2eb-2749-442b-8700-7b267a227c40"]}
+TARGET: RAT-646(b7621e82-8ee9-4efd-9acf-9f8538d46622) -> RAT-639(4cf446f2-f8b1-465a-ad5a-5f7c212aa471)
+DRY: PATCH /api/issues/b7621e82-8ee9-4efd-9acf-9f8538d46622 {blockedByIssueIds:["4cf446f2-f8b1-465a-ad5a-5f7c212aa471"]}
+TARGET: RAT-573(13a29457-e38b-4328-8f32-329a0ffe8294) -> RAT-582(b6a6e96d-facd-468b-b0dc-d849a7064139)
+DRY: PATCH /api/issues/13a29457-e38b-4328-8f32-329a0ffe8294 {blockedByIssueIds:["b6a6e96d-facd-468b-b0dc-d849a7064139"]}
+TARGET: RAT-428(ad50f2eb-2749-442b-8700-7b267a227c40) -> RAT-568(21d5ac23-17a0-468e-b752-e4a02dfc6ede)
+DRY: PATCH /api/issues/ad50f2eb-2749-442b-8700-7b267a227c40 {blockedByIssueIds:["21d5ac23-17a0-468e-b752-e4a02dfc6ede"]}
+TARGET: RAT-346(e178ec4f-1c0e-43dc-a563-d52e7fc89b97) -> RAT-347(80144fd2-db53-42a3-84d3-76d7dcd24972)
+DRY: PATCH /api/issues/e178ec4f-1c0e-43dc-a563-d52e7fc89b97 {blockedByIssueIds:["80144fd2-db53-42a3-84d3-76d7dcd24972"]}
+summary_missing_id_resolution=0
+summary_applied=0
+summary_verified=0
+RESULT=READY_TO_APPLY
+DETAIL=Dry-run generated exact API mutation plan for 10 DevOps blocker edges

@@ -1,6 +1,7 @@
 import {
   validateCreateReviewPayload,
   validatePatchReviewPayload,
+  validateAppealPayload,
   businessError as reviewBusinessError,
 } from "./reviewsContract.js";
 import {
@@ -67,7 +68,7 @@ export const routes = [
   {
     method: "POST",
     path: "/api/v1/reviews/:reviewId/appeals",
-    validateBody: (body) => (!body?.note ? "appeal_note_required" : null),
+    validateBody: validateAppealPayload,
   },
 ];
 
@@ -109,6 +110,12 @@ export function validateRouteRequest(route, payloadOrReq = {}, maybeCtx = {}) {
   }
 
   if (route.path.endsWith("/appeals") && !isAuthenticated(actor)) {
+    return reviewBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
+      code: "unauthenticated",
+    });
+  }
+
+  if (route.path.endsWith("/reports") && !isAuthenticated(actor)) {
     return reviewBusinessError("AUTHORIZATION_ERROR", "Actor is not allowed to perform this action", {
       code: "unauthenticated",
     });

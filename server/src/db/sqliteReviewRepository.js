@@ -110,6 +110,53 @@ export class SqliteReviewRepository {
     );
   }
 
+  createAppeal(appeal, options = {}) {
+    const now = options.now ?? appeal.createdAt ?? new Date().toISOString();
+    const resume = options.resume === true;
+    const cooldownMs = Number(options.appealReopenCooldownMs ?? 24 * 60 * 60 * 1000);
+    this.db.exec("begin immediate transaction");
+    try {
+      const active = this.db.prepare(`
+        select id
+        from review_appeals
+        where review_id = ? and status = 'queued'
+        limit 1
+      `).get(appeal.reviewId);
+      if (active) throw appealConstraint("appeal_already_open");
+
+      const latestClosed = this.db.prepare(`
+        select resolved_at
+        from review_appeals
+        where review_id = ? and resolved_at is not null
+        order by resolved_at desc
+        limit 1
+      `).get(appeal.reviewId);
+      if (latestClosed?.resolved_at && !resume) throw appealConstraint("appeal_resume_required");
+      if (latestClosed?.resolved_at && inCooldown(latestClosed.resolved_at, now, cooldownMs)) {
+        throw appealConstraint("appeal_cooldown_active");
+      }
+
+      this.db.prepare(`
+        insert into review_appeals (
+          id, review_id, appellant_user_id, note, status, created_at, resolved_at
+        ) values (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        appeal.id,
+        appeal.reviewId,
+        appeal.actorId,
+        appeal.note,
+        toAppealStatus(appeal.status),
+        appeal.createdAt,
+        appeal.closedAt ?? null,
+      );
+      this.db.exec("commit");
+    } catch (error) {
+      this.db.exec("rollback");
+      if (isSqliteOpenAppealUniqueViolation(error)) throw appealConstraint("appeal_already_open");
+      throw error;
+    }
+  }
+
   listAppealsByReviewId(reviewId) {
     const rows = this.db.prepare(`
       select *
@@ -127,6 +174,26 @@ export class SqliteReviewRepository {
       closedAt: row.resolved_at ?? null,
       resolution: row.status === "resolved" ? "accepted" : row.status === "rejected" ? "rejected" : undefined,
     }));
+  }
+
+  getAppealById(appealId) {
+    const row = this.db.prepare(`
+      select *
+      from review_appeals
+      where id = ?
+      limit 1
+    `).get(appealId);
+    if (!row) return null;
+    return {
+      id: row.id,
+      reviewId: row.review_id,
+      actorId: row.appellant_user_id,
+      note: row.note,
+      status: fromAppealStatus(row.status),
+      createdAt: row.created_at,
+      closedAt: row.resolved_at ?? null,
+      resolution: row.status === "resolved" ? "accepted" : row.status === "rejected" ? "rejected" : undefined,
+    };
   }
 
   upsertReviewTag({ reviewId, tag, source = "moderator", createdAt }) {
@@ -260,4 +327,23 @@ function toAppealStatus(status) {
 function fromAppealStatus(status) {
   if (status === "resolved" || status === "rejected") return "closed";
   return "open";
+}
+
+function inCooldown(closedAt, now, cooldownMs) {
+  const closedAtMs = new Date(closedAt).getTime();
+  const nowMs = new Date(now).getTime();
+  if (Number.isNaN(closedAtMs) || Number.isNaN(nowMs)) return false;
+  return nowMs - closedAtMs < cooldownMs;
+}
+
+function appealConstraint(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+function isSqliteOpenAppealUniqueViolation(error) {
+  if (!error || typeof error !== "object") return false;
+  const msg = String(error.message ?? "");
+  return msg.includes("idx_review_appeals_single_open");
 }

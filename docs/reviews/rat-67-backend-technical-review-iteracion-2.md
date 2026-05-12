@@ -5,6 +5,11 @@ Owner: Back-End Developer
 Issue: RAT-67
 Spec revisado: `RAT-10-ranking-robusto.md`
 
+## Nota de vigencia (2026-05-11)
+- Este documento conserva su contenido tecnico original, pero la pre-condicion ADR de la seccion 0 queda superada.
+- Fuente canonica de arquitectura confirmada por CTO: `$AGENT_HOME/ADR.md`.
+- Referencia de trazabilidad: `docs/reviews/rat-105-cto-productivity-review-rat-26.md`.
+
 ## 0) Pre-condicion de arquitectura (ADR)
 - `ADR.md` no existe en este workspace al 2026-05-07.
 - Para respetar el mandato de "read ADR before coding", se toma como referencia tecnica vigente:

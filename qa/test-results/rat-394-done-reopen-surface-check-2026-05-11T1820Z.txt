@@ -1,0 +1,4 @@
+RAT-568 runtime surface check
+repo: /Users/martinmarquez/uber-services
+RESULT=BLOCKED_WRONG_REPO
+DETAIL=No control-plane lifecycle runtime signatures found in server/*

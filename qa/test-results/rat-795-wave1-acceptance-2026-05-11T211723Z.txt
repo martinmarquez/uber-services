@@ -1,0 +1,17 @@
+RAT-795 wave1 acceptance check
+date=2026-05-11T21:17:23Z
+-- explicit unblock paths --
+1. RAT-691 -> RAT-554
+2. RAT-388 -> RAT-721
+3. RAT-392 -> RAT-747
+4. RAT-659 -> RAT-579
+5. RAT-632 -> RAT-292
+6. RAT-568 -> RAT-428
+7. RAT-646 -> RAT-639
+8. RAT-573 -> RAT-582
+9. RAT-428 -> RAT-568
+10. RAT-346 -> RAT-347
+explicit_unblock_paths=10
+RESULT=PASS_WAVE1_ACCEPTANCE
+DETAIL=First-wave requirement met: >=8 explicit unblock paths documented
+NOTE=Execution remains externally blocked until control-plane credentials and full ID coverage are provided
