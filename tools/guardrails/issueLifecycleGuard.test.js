@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   buildWakeDedupeLogPayload,
   isTerminalStatus,
+  isEngineeringAssignmentDelta,
   normalizeBlockerEdgesForAnalyticsChain,
   normalizeBlockedByIssueIds,
   persistTerminalIssueState,
@@ -491,6 +492,52 @@ test("long-active wake still emits when material delta exists", () => {
     emit: true,
     code: "emit_long_active_with_material_delta",
   });
+});
+
+test("assignment delta is not material by default for non-engineering assignees", () => {
+  const decision = shouldEmitStatusChangedWake({
+    wakeReason: "issue_status_changed",
+    fromStatus: "done",
+    toStatus: "in_progress",
+    hasCommentDelta: false,
+    hasScopeDelta: false,
+    hasBlockerDelta: false,
+    hasAssignmentDelta: true,
+    assigneeTeam: "marketing",
+  });
+
+  assert.deepEqual(decision, {
+    emit: false,
+    code: "dedupe_terminal_resume_wake_without_comment_delta",
+  });
+});
+
+test("assignment delta is material for engineering assignees", () => {
+  const decision = shouldEmitStatusChangedWake({
+    wakeReason: "issue_status_changed",
+    fromStatus: "done",
+    toStatus: "in_progress",
+    hasCommentDelta: false,
+    hasScopeDelta: false,
+    hasBlockerDelta: false,
+    hasAssignmentDelta: true,
+    assigneeRole: "backend engineer",
+  });
+
+  assert.deepEqual(decision, { emit: true, code: "emit_status_change_wake" });
+});
+
+test("explicit assignment classification override is honored", () => {
+  assert.equal(isEngineeringAssignmentDelta({
+    hasAssignmentDelta: true,
+    assigneeTeam: "marketing",
+    isEngineeringAssignmentDelta: true,
+  }), true);
+  assert.equal(isEngineeringAssignmentDelta({
+    hasAssignmentDelta: true,
+    assigneeTeam: "engineering",
+    isEngineeringAssignmentDelta: false,
+  }), false);
 });
 
 test("terminal state ledger persists and reads back issue terminal status", () => {

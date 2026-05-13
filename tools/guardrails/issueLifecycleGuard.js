@@ -134,7 +134,6 @@ export function shouldEmitStatusChangedWake(input = {}) {
   const persistedTerminalStatus = typeof input.persistedTerminalStatus === "string"
     ? input.persistedTerminalStatus
     : "";
-  const hasCommentDelta = input.hasCommentDelta === true;
   const hasMaterialRiskDelta = hasMaterialRiskSignalDelta(input);
 
   const terminalWakeStatus = [fromStatus, toStatus, currentStatus, targetStatus, persistedTerminalStatus]
@@ -183,6 +182,35 @@ export function shouldEmitProductivityReviewWake(input = {}) {
   }
 
   return { emit: true, code: "emit_long_active_first_signal_without_next_action" };
+}
+
+export function isEngineeringAssignmentDelta(input = {}) {
+  if (input.isEngineeringAssignmentDelta === true) return true;
+  if (input.isEngineeringAssignmentDelta === false) return false;
+  if (input.hasAssignmentDelta !== true) return false;
+
+  const engineeringTags = [
+    input.assigneeTeam,
+    input.assigneeDepartment,
+    input.assigneeFunction,
+    input.assigneeRole,
+    input.assigneeAgentName,
+  ]
+    .filter((value) => typeof value === "string")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value) => value.length > 0);
+
+  if (engineeringTags.length < 1) return true;
+
+  return engineeringTags.some((value) =>
+    value.includes("engineer")
+      || value.includes("engineering")
+      || value.includes("developer")
+      || value.includes("devops")
+      || value.includes("sre")
+      || value.includes("qa")
+      || value.includes("security"),
+  );
 }
 
 export function shouldPersistTerminalIssueState(input = {}) {
@@ -385,10 +413,11 @@ function isNonEmptyString(value) {
 }
 
 function hasMaterialRiskSignalDelta(input = {}) {
+  const materialAssignmentDelta = isEngineeringAssignmentDelta(input);
   return input.hasCommentDelta === true
     || input.hasScopeDelta === true
     || input.hasBlockerDelta === true
-    || input.hasAssignmentDelta === true
+    || materialAssignmentDelta
     || input.hasNoMovementWindowBreach === true
     || input.hasChurnThresholdBreach === true;
 }
